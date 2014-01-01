@@ -201,12 +201,15 @@ class SEQUENCER_OT_adh_add_annotation_image_strip(Operator):
         self.invoked = True
         return retval
 
+def draw_sequencer_menu(self, context):
+    pass
+
 def register():
-    bpy.types.SEQUENCER_HT_header.prepend(draw_menu)
+    bpy.types.SEQUENCER_HT_header.prepend(draw_sequencer_menu)
     bpy.utils.register_module(__name__)
 
 def unregister():
-    bpy.types.SEQUENCER_HT_header.remove(draw_menu)
+    bpy.types.SEQUENCER_HT_header.remove(draw_sequencer_menu)
     bpy.utils.unregister_module(__name__)
 
 if __name__ == "__main__":
