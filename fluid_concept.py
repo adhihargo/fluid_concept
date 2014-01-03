@@ -116,6 +116,11 @@ class VIEW3D_OT_adh_background_from_other_scene(Operator):
             return {'CANCELLED'}
         space = context.space_data
         space.show_background_images = True
+        scene = bpy.data.scenes[self.scene_name]
+        if not scene.camera:
+            self.report({'ERROR'},
+                        'Scene "%s" has no active camera.' % self.scene_name)
+            return {'CANCELLED'}
 
         temp_dir = context.user_preferences.filepaths.temporary_directory
         if not temp_dir:
@@ -129,7 +134,6 @@ class VIEW3D_OT_adh_background_from_other_scene(Operator):
                 continue
             bkg_image.show_background_image = False
 
-        scene = bpy.data.scenes[self.scene_name]
         render_image(context, prv_filepath, scale = self.scale,
                      scene = scene, opengl = self.opengl)
 
