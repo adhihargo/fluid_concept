@@ -201,8 +201,6 @@ class SEQUENCER_OT_adh_add_annotation_image_strip(Operator):
         self.invoked = True
         return retval
 
-def draw_sequencer_menu(self, context):
-    pass
 
 def draw_view3d_background_panel(self, context):
     layout = self.layout
@@ -210,14 +208,20 @@ def draw_view3d_background_panel(self, context):
     layout.operator('view3d.adh_background_from_other_scene',
                     text = "Add From Other Scene")
 
+def draw_sequencer_add_strip_menu(self, context):
+    layout = self.layout
+
+    layout.operator('sequencer.adh_add_annotation_image_strip',
+                    text = "Annotation Image")
+
 def register():
     bpy.types.VIEW3D_PT_background_image.append(draw_view3d_background_panel)
-    bpy.types.SEQUENCER_HT_header.prepend(draw_sequencer_menu)
+    bpy.types.SEQUENCER_MT_add.append(draw_sequencer_add_strip_menu)
     bpy.utils.register_module(__name__)
 
 def unregister():
     bpy.types.VIEW3D_PT_background_image.remove(draw_view3d_background_panel)
-    bpy.types.SEQUENCER_HT_header.remove(draw_sequencer_menu)
+    bpy.types.SEQUENCER_MT_add.remove(draw_sequencer_add_strip_menu)
     bpy.utils.unregister_module(__name__)
 
 if __name__ == "__main__":
