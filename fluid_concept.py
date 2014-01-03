@@ -23,7 +23,7 @@ import os
 import subprocess
 import tempfile
 from bpy.types import Operator, Menu
-from bpy.props import EnumProperty, IntProperty, StringProperty
+from bpy.props import BoolProperty, EnumProperty, IntProperty, StringProperty
 
 bl_info = {
     "name": "ADH Fluid Concept",
@@ -54,7 +54,7 @@ def get_topmost_channel(sequences, frame_min, frame_max):
     return max(map(lambda s: s.channel, sequences_in_range))\
         if sequences_in_range else 1
 
-def render_image(context, filepath, scale = 100, scene = None):
+def render_image(context, filepath, scale = 100, scene = None, opengl = False):
     # Save, render...
     if context.space_data.type == 'VIEW_3D':
         prev_view_persp = context.space_data.region_3d.view_perspective
@@ -69,7 +69,9 @@ def render_image(context, filepath, scale = 100, scene = None):
     render_settings.filepath = filepath
     render_settings.image_settings.file_format = 'PNG'
     render_settings.resolution_percentage = scale
-    bpy.ops.render.render(animation = False, write_still = True)
+
+    render_func = bpy.ops.render.opengl if opengl else bpy.ops.render.render
+    render_func(animation = False, write_still = True)
 
     # ... restore.
     render_settings.filepath = prev_filepath
@@ -90,6 +92,7 @@ class VIEW3D_OT_adh_background_from_other_scene(Operator):
     scene_name = EnumProperty(items = get_scene_enums)
     scale = IntProperty(min = 0, max = 100,
                         default = 100, subtype = 'PERCENTAGE')
+    opengl = BoolProperty(default = False)
     invoked = False
 
     @classmethod
@@ -102,12 +105,11 @@ class VIEW3D_OT_adh_background_from_other_scene(Operator):
             return
         
         row = layout.row()
-        row.label("Scene:")
-        row.prop(self, 'scene_name', text="")
-
+        row.label("Scene:") ; row.prop(self, 'scene_name', text="")
         row = layout.row()
-        row.label("Resolution Percentage:")
-        row.prop(self, 'scale', text="")
+        row.label("Resolution Percentage:") ; row.prop(self, 'scale', text="")
+        row = layout.row()
+        row.label("OpenGL:") ; row.prop(self, 'opengl', text=" ")
 
     def execute(self, context):
         if self.scene_name == context.scene.name:
@@ -128,7 +130,8 @@ class VIEW3D_OT_adh_background_from_other_scene(Operator):
             bkg_image.show_background_image = False
 
         scene = bpy.data.scenes[self.scene_name]
-        render_image(context, prv_filepath, scale = self.scale, scene = scene)
+        render_image(context, prv_filepath, scale = self.scale,
+                     scene = scene, opengl = self.opengl)
 
         if not bkg_preview:
             bkg_preview = space.background_images.new()
