@@ -37,6 +37,22 @@ bl_info = {
     "tracker_url": "https://github.com/adhihargo/fluid_concept/issues",
     "category": "Sequencer"}
 
+def edit_image_file(context, filepath, external_editor = True):
+    image_editor = context.user_preferences.filepaths.image_editor
+    if image_editor and external_editor:
+        proc = subprocess.Popen([image_editor, filepath])
+        return
+
+    image = bpy.data.images.load(filepath)
+
+    area_list = [a for a in context.screen.areas if a != context.area and
+                 not a.type in ['SEQUENCE_EDITOR', 'INFO']]
+    image_area = area_list[-1] if area_list else context.area
+    image_area.type = 'IMAGE_EDITOR'
+    image_space = image_area.spaces.active
+    image_space.image = image
+    image_space.mode = 'PAINT'
+
 def get_scene_enums(self, context):
     enums = [(s.name, s.name, 'Scene "%s"' % s.name) for s in bpy.data.scenes
              if s != context.scene]
@@ -158,6 +174,7 @@ class SEQUENCER_OT_adh_add_annotation_image_strip(Operator):
     bl_options = {'REGISTER', 'UNDO'}
 
     filepath = StringProperty(subtype = 'FILE_PATH')
+    external_editor = BoolProperty(default = True)
     invoked = False
 
     @classmethod
@@ -165,18 +182,21 @@ class SEQUENCER_OT_adh_add_annotation_image_strip(Operator):
         return context.space_data.type == 'SEQUENCE_EDITOR'
 
     def draw(self, context):
+        layout = self.layout
         if self.invoked:
             return
 
-        self.layout.prop(self, 'filepath', text="File Path")
+        row = layout.row()
+        row.label('File Path:')
+        row.prop(self, 'filepath', text='')
+
+        row = layout.row()
+        row.label('Use External Editor:')
+        row.prop(self, 'external_editor', text=' ')
 
     def execute(self, context):
-        image_editor = context.user_preferences.filepaths.image_editor
         self.filepath = bpy.path.abspath(self.filepath)
 
-        if not image_editor:
-            self.report({'ERROR'}, 'No image editor set in User Preferences.')
-            return {'CANCELLED'}
         render_image(context, self.filepath)
         if not os.path.exists(self.filepath):
             self.report({'ERROR'}, "Render output file doesn't exist.")
@@ -197,8 +217,9 @@ class SEQUENCER_OT_adh_add_annotation_image_strip(Operator):
         image_strip.blend_type = 'ALPHA_OVER'
         image_strip.frame_final_duration = strip_duration
         image_strip.mute = True # Unmute manually after edit = reload image
+
+        edit_image_file(context, self.filepath, self.external_editor)
         
-        proc = subprocess.Popen([image_editor, self.filepath])
         return {'FINISHED'}
 
     def invoke(self, context, event):
