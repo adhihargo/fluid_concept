@@ -54,8 +54,7 @@ def edit_image_file(context, filepath, external_editor = True):
     image_space.mode = 'PAINT'
 
 def get_scene_enums(self, context):
-    enums = [(s.name, s.name, 'Scene "%s"' % s.name) for s in bpy.data.scenes
-             if s != context.scene]
+    enums = [(s.name, s.name, 'Scene "%s"' % s.name) for s in bpy.data.scenes]
     if not enums:
         enums.append((context.scene.name, "(no other scene)",
                       "There is no other scene to choose from."))
@@ -98,9 +97,9 @@ def render_image(context, filepath, scale = 100, scene = None, opengl = False):
     if context.space_data.type == 'VIEW_3D':
         context.space_data.region_3d.view_perspective = prev_view_persp
 
-class VIEW3D_OT_adh_background_from_other_scene(Operator):
-    bl_idname = 'view3d.adh_background_from_other_scene'
-    bl_label = 'Add Background from Other Scene'
+class VIEW3D_OT_adh_background_from_scene(Operator):
+    bl_idname = 'view3d.adh_background_from_scene'
+    bl_label = 'Add Background from Scene'
     bl_options = {'REGISTER', 'UNDO'}
 
     PREVIEW_DATA_NAME = 'sequencer_preview'
@@ -128,8 +127,6 @@ class VIEW3D_OT_adh_background_from_other_scene(Operator):
         row.label("OpenGL:") ; row.prop(self, 'opengl', text=" ")
 
     def execute(self, context):
-        if self.scene_name == context.scene.name:
-            return {'CANCELLED'}
         space = context.space_data
         space.show_background_images = True
         scene = bpy.data.scenes[self.scene_name]
@@ -233,8 +230,8 @@ class SEQUENCER_OT_adh_add_annotation_image_strip(Operator):
 def draw_view3d_background_panel(self, context):
     layout = self.layout
 
-    layout.operator('view3d.adh_background_from_other_scene',
-                    text = "Add From Other Scene")
+    layout.operator('view3d.adh_background_from_scene',
+                    text = "Add From Scene")
 
 def draw_sequencer_add_strip_menu(self, context):
     layout = self.layout
