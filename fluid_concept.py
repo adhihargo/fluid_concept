@@ -81,9 +81,13 @@ def render_image(context, filepath, scale = 100, scene = None, opengl = False):
     prev_filepath = render_settings.filepath
     prev_fileformat = render_settings.image_settings.file_format
     prev_render_ratio = render_settings.resolution_percentage
+    prev_alpha_mode = render_settings.alpha_mode
+    prev_color_mode = render_settings.image_settings.color_mode
     render_settings.filepath = filepath
     render_settings.image_settings.file_format = 'PNG'
     render_settings.resolution_percentage = scale
+    render_settings.alpha_mode = 'TRANSPARENT'
+    render_settings.image_settings.color_mode = 'RGBA'
 
     render_func = bpy.ops.render.opengl if opengl else bpy.ops.render.render
     render_func(animation = False, write_still = True)
@@ -92,6 +96,8 @@ def render_image(context, filepath, scale = 100, scene = None, opengl = False):
     render_settings.filepath = prev_filepath
     render_settings.image_settings.file_format = prev_fileformat
     render_settings.resolution_percentage = prev_render_ratio
+    render_settings.alpha_mode = prev_alpha_mode
+    render_settings.image_settings.color_mode = prev_color_mode
 
     context.screen.scene = prev_scene
     if context.space_data.type == 'VIEW_3D':
