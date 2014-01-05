@@ -69,6 +69,21 @@ def get_topmost_channel(sequences, frame_min, frame_max):
     return max(map(lambda s: s.channel, sequences_in_range))\
         if sequences_in_range else 1
 
+def get_fcurve(action, sequence):
+    channel = 'volume' if sequence.type == 'SOUND' else 'blend_alpha'
+    data_path = 'sequence_editor.sequences_all["%s"].%s' % (
+        sequence.name, channel)
+
+    fcurve = None
+    for f in action.fcurves:
+        if f.data_path == data_path:
+            fcurve = f
+            break
+    if not fcurve:
+        fcurve = action.fcurves.new(data_path)
+
+    return fcurve
+
 def render_image(context, filepath, scale = 100, scene = None, opengl = False):
     # Save, render...
     if context.space_data.type == 'VIEW_3D':
@@ -232,6 +247,82 @@ class SEQUENCER_OT_adh_add_annotation_image_strip(Operator):
         self.invoked = True
         return retval
 
+class SEQUENCER_OT_adh_fade_in_out_selected_strips(Operator):
+    bl_idname = 'sequencer.adh_fade_in_out_selected_strips'
+    bl_label = 'Fade In/Out Selected Strips'
+    bl_options = {'REGISTER', 'UNDO'}
+
+    do_fade_in = BoolProperty(default = True)
+    do_fade_out = BoolProperty(default = True)
+    fade_in_secs = IntProperty(default = 2, min = 0)
+    fade_out_secs = IntProperty(default = 2, min = 0)
+
+    invoked = False
+
+    @classmethod
+    def poll(self, context):
+        return context.selected_sequences
+
+    def draw(self, context):
+        layout = self.layout
+        if self.invoked:
+            return
+
+        row = layout.row()
+        row.prop(self, 'do_fade_in', text = '')
+        row.label('Fade In:')
+        row.prop(self, 'fade_in_secs', text = '')
+
+        row = layout.row()
+        row.prop(self, 'do_fade_out', text = '')
+        row.label('Fade Out:')
+        row.prop(self, 'fade_out_secs', text = '')
+    
+    def execute(self, context):
+        scene = context.scene
+        if not scene.animation_data:
+            scene.animation_data_create()
+
+        action = scene.animation_data.action
+        if not action:
+            action = bpy.data.actions.new(scene.name + "_sequence_anim")
+            scene.animation_data.action = action
+
+        fps = context.scene.render.fps
+        for sequence in context.selected_sequences:
+            fcurve = get_fcurve(action, sequence)
+
+            frame_duration = sequence.frame_final_duration
+            fade_in_frames = self.fade_in_secs * fps
+            fade_out_frames = self.fade_out_secs * fps
+            frame_shortage = -frame_duration + (
+                (fade_in_frames if self.do_fade_in else 0) +
+                (fade_out_frames if self.do_fade_out else 0))                
+            if frame_shortage > 0:
+                fade_in_frames -= frame_shortage / 2
+                fade_out_frames -= frame_shortage / 2
+
+            frame_start = sequence.frame_final_start
+            frame_end =  sequence.frame_final_end
+            
+            for point_x in [p.co.x for p in fcurve.keyframe_points if
+                            p.co.x > frame_start and p.co.x < frame_end]:
+                point = next(filter(lambda p: p.co.x == point_x,
+                                    fcurve.keyframe_points), None)
+                fcurve.keyframe_points.remove(point)
+            for frame, value in [(frame_start, 0 if self.do_fade_in else 1),
+                                 (frame_start + fade_in_frames, 1),
+                                 (frame_end - fade_out_frames, 1),
+                                 (frame_end, 0 if self.do_fade_out else 1)]:
+                point = fcurve.keyframe_points.insert(frame, value)
+                point.interpolation = 'LINEAR'
+
+        return {'FINISHED'}
+
+    def invoke(self, context, event):
+        retval = context.window_manager.invoke_props_dialog(self)
+        self.invoked = True
+        return retval
 
 def draw_view3d_background_panel(self, context):
     layout = self.layout
