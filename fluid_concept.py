@@ -170,7 +170,7 @@ class SEQUENCER_OT_adh_add_annotation_image_strip(Operator):
     bl_label = 'Add Annotation Image Strip'
     bl_options = {'REGISTER', 'UNDO'}
 
-    filepath = StringProperty(subtype = 'FILE_PATH')
+    filepath = StringProperty(subtype = 'FILE_PATH', default = "//frame.png")
     external_editor = BoolProperty(default = True)
     invoked = False
 
@@ -236,6 +236,7 @@ def draw_view3d_background_panel(self, context):
 def draw_sequencer_add_strip_menu(self, context):
     layout = self.layout
 
+    layout.operator_context = 'INVOKE_DEFAULT' # It's changed to EXEC somewhere
     layout.operator('sequencer.adh_add_annotation_image_strip',
                     text = "Annotation Image")
 
