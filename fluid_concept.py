@@ -37,6 +37,8 @@ bl_info = {
     "tracker_url": "https://github.com/adhihargo/fluid_concept/issues",
     "category": "Sequencer"}
 
+PRJ_IMG_PREFIX = 'PRJ_IMG_'
+
 def edit_image_file(context, filepath, external_editor = True):
     image_editor = context.user_preferences.filepaths.image_editor
     if image_editor and external_editor:
@@ -123,8 +125,6 @@ class VIEW3D_OT_adh_background_from_scene(Operator):
     bl_label = 'Add Background from Scene'
     bl_options = {'REGISTER', 'UNDO'}
 
-    PREVIEW_DATA_NAME = 'sequencer_preview'
-
     scene_name = EnumProperty(items = get_scene_enums)
     scale = IntProperty(min = 0, max = 100,
                         default = 100, subtype = 'PERCENTAGE')
@@ -149,7 +149,6 @@ class VIEW3D_OT_adh_background_from_scene(Operator):
 
     def execute(self, context):
         space = context.space_data
-        space.show_background_images = True
         scene = bpy.data.scenes[self.scene_name]
         if not scene.camera:
             self.report({'ERROR'},
@@ -161,12 +160,13 @@ class VIEW3D_OT_adh_background_from_scene(Operator):
             temp_dir = tempfile.gettempdir()
         
         bkg_preview = None
-        prv_filepath = os.path.join(temp_dir, self.PREVIEW_DATA_NAME + '.png')
+        prv_filename = PRJ_IMG_PREFIX + self.scene_name + '.png'
+        prv_filepath = os.path.join(temp_dir, prv_filename)
         for bkg_image in space.background_images:
-            if bkg_image.image.name.startswith(self.PREVIEW_DATA_NAME):
+            if bkg_image.image and bkg_image.image.filepath == prv_filepath:
                 bkg_preview = bkg_image
                 continue
-            bkg_image.show_background_image = False
+            space.background_images.remove(bkg_image)
 
         render_image(context, prv_filepath, scale = self.scale,
                      scene = scene, opengl = self.opengl)
@@ -174,11 +174,15 @@ class VIEW3D_OT_adh_background_from_scene(Operator):
         if not bkg_preview:
             bkg_preview = space.background_images.new()
             bkg_image = bpy.data.images.load(prv_filepath)
+            bkg_image.name = prv_filename
             bkg_preview.image = bkg_image
         else:
             bkg_preview.image.filepath = prv_filepath
             bkg_preview.image.reload()
+        bkg_preview.show_expanded = False
+        bkg_preview.view_axis = 'CAMERA'
 
+        space.show_background_images = True
         return {'FINISHED'}
 
     def invoke(self, context, event):
