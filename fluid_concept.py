@@ -38,6 +38,9 @@ bl_info = {
     "category": "Sequencer"}
 
 PRJ_IMG_PREFIX = 'PRJ_IMG_'
+PRJ_UVMAP_PREFIX = 'PRJ_UVMAP_'
+PRJ_MAT_PREFIX = 'PRJ_MAT_'
+PRJ_TEX_PREFIX = 'PRJ_TEX_'
 
 def edit_image_file(context, filepath, external_editor = True):
     image_editor = context.user_preferences.filepaths.image_editor
@@ -54,6 +57,13 @@ def edit_image_file(context, filepath, external_editor = True):
     image_space = image_area.spaces.active
     image_space.image = image
     image_space.mode = 'PAINT'
+
+def get_background_enums(self, context):
+    space = context.space_data
+    enums = [(str(i), b.image.name, 'Image "%s"' % b.image.name)
+             for i, b in enumerate(space.background_images)
+             if b.source == 'IMAGE']
+    return enums
 
 def get_scene_enums(self, context):
     enums = [(s.name, s.name, 'Scene "%s"' % s.name) for s in bpy.data.scenes]
@@ -146,9 +156,93 @@ class MESH_OT_adh_edit_uvmap_image(Operator):
         
         return {'FINISHED'}
 
-class VIEW3D_OT_adh_background_from_scene(Operator):
-    bl_idname = 'view3d.adh_background_from_scene'
-    bl_label = 'Add Background from Scene'
+class MESH_OT_adh_project_background_image_to_mesh(Operator):
+    bl_idname = 'mesh.adh_project_background_image_to_mesh'
+    bl_label = 'Project Background Image to Mesh'
+    bl_options = {'REGISTER', 'UNDO'}
+
+    bkg_image_idx = EnumProperty(items = get_background_enums)
+
+    invoked = False
+
+    @classmethod
+    def poll(self, context):
+        return context.space_data.type == 'VIEW_3D'\
+            and context.space_data.background_images\
+            and context.object and context.object.type == 'MESH'
+
+    def draw(self, context):
+        layout = self.layout
+        if self.invoked:
+            return
+
+        row = layout.row()
+        row.label('Background Image:')
+        row.prop(self, 'bkg_image_idx', text='')
+
+    def execute(self, context):
+        cam_list = [o for o in context.selected_objects if o.type == 'CAMERA']
+        cam = cam_list[0] if cam_list else None
+
+        obj = context.object
+        scene = context.scene
+        space = context.space_data
+        image = space.background_images[int(self.bkg_image_idx)].image
+
+        prev_perspective = space.region_3d.view_perspective
+        prev_camera = scene.camera
+        prev_mode = obj.mode
+        space.region_3d.view_perspective = 'CAMERA'
+        if cam:
+            scene.camera = cam
+        bpy.ops.object.mode_set(mode = 'EDIT')
+
+        bpy.ops.mesh.select_all(action = 'SELECT')
+        bpy.ops.uv.project_from_view(
+            orthographic = (scene.camera.type == 'ORTHO'),
+            camera_bounds = True, correct_aspect = False,
+            clip_to_bounds = False, scale_to_bounds = False)
+
+        bpy.ops.object.mode_set(mode=prev_mode)
+        space.region_3d.view_perspective = prev_perspective
+        scene.camera = prev_camera
+
+        uvmap = obj.data.uv_textures.active
+        uvmap.name = PRJ_UVMAP_PREFIX
+        for uvmap_poly in uvmap.data:
+            uvmap_poly.image = image
+
+        mat_name = PRJ_MAT_PREFIX + obj.name
+        mat = bpy.data.materials.get(mat_name, None)
+        if not mat:
+            mat = bpy.data.materials.new(mat_name)
+        mat.game_settings.alpha_blend = 'ALPHA'
+        mat.use_shadeless = True
+
+        tex_name = PRJ_TEX_PREFIX + obj.name
+        tex = bpy.data.textures.get(tex_name, None)
+        if not tex:
+            tex = bpy.data.textures.new(tex_name, 'IMAGE')
+        tex.image = image
+
+        texslot = mat.texture_slots.create(0)
+        texslot.texture_coords = 'UV'
+        texslot.uv_layer = uvmap.name
+        texslot.texture = tex
+
+        obj.data.materials.clear()
+        obj.data.materials.append(mat)
+
+        return {'FINISHED'}
+
+    def invoke(self, context, event):
+        retval = context.window_manager.invoke_props_dialog(self)
+        self.invoked = True
+        return retval
+
+class VIEW3D_OT_adh_background_image_from_scene(Operator):
+    bl_idname = 'view3d.adh_background_image_from_scene'
+    bl_label = 'Add Background Image from Scene'
     bl_options = {'REGISTER', 'UNDO'}
 
     scene_name = EnumProperty(items = get_scene_enums)
@@ -384,7 +478,7 @@ class SEQUENCER_OT_adh_fade_in_out_selected_strips(Operator):
 def draw_view3d_background_panel(self, context):
     layout = self.layout
 
-    layout.operator('view3d.adh_background_from_scene',
+    layout.operator('view3d.adh_background_image_from_scene',
                     text = "Add From Scene")
 
 def draw_sequencer_add_strip_menu(self, context):
