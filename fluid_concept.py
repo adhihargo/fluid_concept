@@ -120,6 +120,32 @@ def render_image(context, filepath, scale = 100, scene = None, opengl = False):
     if context.space_data.type == 'VIEW_3D':
         context.space_data.region_3d.view_perspective = prev_view_persp
 
+class MESH_OT_adh_edit_uvmap_image(Operator):
+    bl_idname = 'mesh.adh_edit_uvmap_image'
+    bl_label = 'Edit UVMap Image'
+    bl_options = {'REGISTER', 'UNDO'}
+
+    @classmethod
+    def poll(self, context):
+        obj = context.object
+        return obj and obj.type == 'MESH' and obj.data.uv_textures.active
+
+    def execute(self, context):
+        obj = context.object
+        image = None
+        uvmap = obj.data.uv_textures.active
+        for uvmap_poly in uvmap.data:
+            if uvmap_poly.image:
+                image = uvmap_poly.image
+                break
+
+        if not image:
+            return {'CANCELLED'}
+        filepath = bpy.path.abspath(image.filepath)
+        edit_image_file(context, filepath)
+        
+        return {'FINISHED'}
+
 class VIEW3D_OT_adh_background_from_scene(Operator):
     bl_idname = 'view3d.adh_background_from_scene'
     bl_label = 'Add Background from Scene'
@@ -250,6 +276,33 @@ class SEQUENCER_OT_adh_add_annotation_image_strip(Operator):
         retval = context.window_manager.invoke_props_dialog(self)
         self.invoked = True
         return retval
+
+class SEQUENCER_OT_adh_edit_strip_image(Operator):
+    bl_idname = 'sequencer.adh_edit_strip_image'
+    bl_label = 'Edit Strip Image'
+    bl_options = {'REGISTER', 'UNDO'}
+
+    @classmethod
+    def poll(self, context):
+        return context.sequences and len(context.selected_sequences) == 1
+
+    def execute(self, context):
+        sequence = context.selected_editable_sequences[0]
+        if isinstance(sequence, bpy.types.EffectSequence)\
+                and sequence.input_count > 0 and sequence.input_1:
+            sequence = sequence.input_1
+
+        current_frame = context.scene.frame_current
+        if(sequence.type == 'IMAGE'):
+            sequence_element = sequence.strip_elem_from_frame(current_frame)
+            filedir = bpy.path.abspath(sequence.directory)
+            filename = sequence_element.filename
+            filepath = os.path.join(filedir, filename)
+            edit_image_file(context, filepath)
+        else:
+            return {'CANCELLED'}
+
+        return {'FINISHED'}
 
 class SEQUENCER_OT_adh_fade_in_out_selected_strips(Operator):
     bl_idname = 'sequencer.adh_fade_in_out_selected_strips'
