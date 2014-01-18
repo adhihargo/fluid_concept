@@ -20,6 +20,7 @@
 
 import bpy
 import os
+import re
 import subprocess
 import tempfile
 from bpy.types import Operator, Menu
@@ -42,6 +43,14 @@ PRJ_UVMAP_PREFIX = 'PRJ_UVMAP_'
 PRJ_MAT_PREFIX = 'PRJ_MAT_'
 PRJ_TEX_PREFIX = 'PRJ_TEX_'
 BASE_LAYER_SEPARATOR = '_'
+HAS_XCFTOOLS = any(filter(lambda p: os.path.exists(os.path.join(p, 'xcf2png')),
+                          os.environ.get('PATH', '').split(os.pathsep)))
+XCFINFO_OUTPUT_RE = re.compile(r"""
+(?P<visibility>[+-])\s
+(?P<width>\d+)x(?P<height>\d+)\+(?P<offset_x>\d+)\+(?P<offset_y>\d+)\s
+(?P<color_mode>\S+)\s
+(?P<layer_mode>\S+)\s
+(?P<layer_name>.+)$""", re.VERBOSE)
 
 def edit_image_file(context, filepath, external_editor = True):
     image_editor = context.user_preferences.filepaths.image_editor
@@ -58,6 +67,19 @@ def edit_image_file(context, filepath, external_editor = True):
     image_space = image_area.spaces.active
     image_space.image = image
     image_space.mode = 'PAINT'
+
+def get_xcf_layers(filepath):
+    if not (HAS_XCFTOOLS and os.path.exists(filepath)):
+        return []
+
+    status, output_str = subprocess.getstatusoutput("xcfinfo %s" % filepath)
+    if(status != 0):
+        return []
+
+    output = [m.group('layer_name')
+              for m in map(lambda l: XCFINFO_OUTPUT_RE.match(l),
+                           output_str.split('\n')[1:]) if m]
+    return output
 
 def get_master_file(filepath):
     dirname, filename = os.path.split(bpy.path.abspath(filepath))
