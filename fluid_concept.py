@@ -41,6 +41,7 @@ PRJ_IMG_PREFIX = 'PRJ_IMG_'
 PRJ_UVMAP_PREFIX = 'PRJ_UVMAP_'
 PRJ_MAT_PREFIX = 'PRJ_MAT_'
 PRJ_TEX_PREFIX = 'PRJ_TEX_'
+BASE_LAYER_SEPARATOR = '_'
 
 def edit_image_file(context, filepath, external_editor = True):
     image_editor = context.user_preferences.filepaths.image_editor
@@ -57,6 +58,24 @@ def edit_image_file(context, filepath, external_editor = True):
     image_space = image_area.spaces.active
     image_space.image = image
     image_space.mode = 'PAINT'
+
+def get_master_file(filepath):
+    dirname, filename = os.path.split(bpy.path.abspath(filepath))
+    basename = os.path.splitext(filename)[0]    
+
+    master_filepath = os.path.join(dirname, basename + '.xcf')
+    if not os.path.exists(master_filepath):
+        # Assume filename is XCFNAME_LAYERNAME.EXT, try if XCFNAME.xcf matches
+        rsep = basename.rfind(BASE_LAYER_SEPARATOR)
+        while rsep != -1:
+            master_filepath = os.path.join(dirname, basename[:rsep] + '.xcf')
+            if os.path.exists(master_filepath):
+                break
+            rsep = basename.rfind(BASE_LAYER_SEPARATOR, 0, rsep)
+    if not os.path.exists(master_filepath):
+        master_filepath = filepath
+
+    return master_filepath
 
 def get_background_enums(self, context):
     space = context.space_data
@@ -151,7 +170,7 @@ class MESH_OT_adh_edit_uvmap_image(Operator):
 
         if not image:
             return {'CANCELLED'}
-        filepath = bpy.path.abspath(image.filepath)
+        filepath = get_master_file(bpy.path.abspath(image.filepath))
         edit_image_file(context, filepath)
         
         return {'FINISHED'}
