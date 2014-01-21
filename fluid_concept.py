@@ -294,10 +294,12 @@ class VIEW3D_OT_adh_background_image_from_scene(Operator):
     bl_label = 'Add Background Image from Scene'
     bl_options = {'REGISTER', 'UNDO'}
 
-    scene_name = EnumProperty(items = get_scene_enums)
     scale = IntProperty(min = 0, max = 100,
                         default = 100, subtype = 'PERCENTAGE')
-    opengl = BoolProperty(default = False)
+    scene_name = EnumProperty(items = get_scene_enums)
+    dirpath = StringProperty(subtype = 'DIR_PATH', default = "//")
+    external_editor = BoolProperty(default = True)
+    opengl = BoolProperty(default = True)
     invoked = False
 
     @classmethod
@@ -314,6 +316,8 @@ class VIEW3D_OT_adh_background_image_from_scene(Operator):
         row = layout.row()
         row.label("Resolution Percentage:") ; row.prop(self, 'scale', text="")
         row = layout.row()
+        row.label("File Location:") ; row.prop(self, 'dirpath', text="")
+        row = layout.row()
         row.label("OpenGL:") ; row.prop(self, 'opengl', text=" ")
 
     def execute(self, context):
@@ -324,13 +328,9 @@ class VIEW3D_OT_adh_background_image_from_scene(Operator):
                         'Scene "%s" has no active camera.' % self.scene_name)
             return {'CANCELLED'}
 
-        temp_dir = context.user_preferences.filepaths.temporary_directory
-        if not temp_dir:
-            temp_dir = tempfile.gettempdir()
-        
         bkg_preview = None
         prv_filename = PRJ_IMG_PREFIX + self.scene_name + '.png'
-        prv_filepath = os.path.join(temp_dir, prv_filename)
+        prv_filepath = os.path.join(self.dirpath, prv_filename)
         for bkg_image in space.background_images:
             if bkg_image.image and bkg_image.image.filepath == prv_filepath:
                 bkg_preview = bkg_image
@@ -364,8 +364,10 @@ class SEQUENCER_OT_adh_add_annotation_image_strip(Operator):
     bl_label = 'Add Annotation Image Strip'
     bl_options = {'REGISTER', 'UNDO'}
 
+    scene_name = EnumProperty(items = get_scene_enums)
     filepath = StringProperty(subtype = 'FILE_PATH', default = "//frame.png")
     external_editor = BoolProperty(default = True)
+    opengl = BoolProperty(default = True)
     invoked = False
 
     @classmethod
@@ -378,9 +380,11 @@ class SEQUENCER_OT_adh_add_annotation_image_strip(Operator):
             return
 
         row = layout.row()
-        row.label('File Path:')
-        row.prop(self, 'filepath', text='')
-
+        row.label("Scene:") ; row.prop(self, 'scene_name', text="")
+        row = layout.row()
+        row.label('File Path:') ; row.prop(self, 'filepath', text='')
+        row = layout.row()
+        row.label("OpenGL:") ; row.prop(self, 'opengl', text=" ")
         row = layout.row()
         row.label('Use External Editor:')
         row.prop(self, 'external_editor', text=' ')
@@ -388,7 +392,9 @@ class SEQUENCER_OT_adh_add_annotation_image_strip(Operator):
     def execute(self, context):
         self.filepath = bpy.path.abspath(self.filepath)
 
-        render_image(context, self.filepath)
+        render_scene = bpy.data.scenes[self.scene_name]
+        render_image(context, self.filepath, scene = render_scene,
+                     opengl = self.opengl)
         if not os.path.exists(self.filepath):
             self.report({'ERROR'}, "Render output file doesn't exist.")
             return {'CANCELLED'}
