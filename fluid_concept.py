@@ -68,6 +68,13 @@ def edit_image_file(context, filepath, external_editor = True):
     image_space.image = image
     image_space.mode = 'PAINT'
 
+def get_temp_dir():
+    temp_dir = bpy.context.user_preferences.filepaths.temporary_directory
+    if not temp_dir:
+        temp_dir = tempfile.gettempdir()
+
+    return temp_dir
+
 def get_xcf_layers(filepath):
     if not (HAS_XCFTOOLS and os.path.exists(filepath)):
         return []
@@ -138,19 +145,20 @@ def get_fcurve(action, sequence):
     return fcurve
 
 def render_image(context, filepath, scale = 100, scene = None, opengl = False):
+    prev = {}
     # Save, render...
     if context.space_data.type == 'VIEW_3D':
-        prev_view_persp = context.space_data.region_3d.view_perspective
-    prev_scene = context.screen.scene
+        prev['view_persp'] = context.space_data.region_3d.view_perspective
+    prev['scene'] = context.screen.scene
     if scene:
         context.screen.scene = scene
 
     render_settings = context.scene.render
-    prev_filepath = render_settings.filepath
-    prev_fileformat = render_settings.image_settings.file_format
-    prev_render_ratio = render_settings.resolution_percentage
-    prev_alpha_mode = render_settings.alpha_mode
-    prev_color_mode = render_settings.image_settings.color_mode
+    prev['filepath'] = render_settings.filepath
+    prev['fileformat'] = render_settings.image_settings.file_format
+    prev['render_ratio'] = render_settings.resolution_percentage
+    prev['alpha_mode'] = render_settings.alpha_mode
+    prev['color_mode'] = render_settings.image_settings.color_mode
     render_settings.filepath = filepath
     render_settings.image_settings.file_format = 'PNG'
     render_settings.resolution_percentage = scale
@@ -161,15 +169,15 @@ def render_image(context, filepath, scale = 100, scene = None, opengl = False):
     render_func(animation = False, write_still = True)
 
     # ... restore.
-    render_settings.filepath = prev_filepath
-    render_settings.image_settings.file_format = prev_fileformat
-    render_settings.resolution_percentage = prev_render_ratio
-    render_settings.alpha_mode = prev_alpha_mode
-    render_settings.image_settings.color_mode = prev_color_mode
+    render_settings.filepath = prev['filepath']
+    render_settings.image_settings.file_format = prev['fileformat']
+    render_settings.resolution_percentage = prev['render_ratio']
+    render_settings.alpha_mode = prev['alpha_mode']
+    render_settings.image_settings.color_mode = prev['color_mode']
 
-    context.screen.scene = prev_scene
+    context.screen.scene = prev['scene']
     if context.space_data.type == 'VIEW_3D':
-        context.space_data.region_3d.view_perspective = prev_view_persp
+        context.space_data.region_3d.view_perspective = prev['view_persp']
 
 class MESH_OT_adh_edit_uvmap_image(Operator):
     bl_idname = 'mesh.adh_edit_uvmap_image'
