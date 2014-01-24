@@ -90,7 +90,9 @@ def get_xcf_layers(filepath):
 
 def get_master_file(filepath):
     dirname, filename = os.path.split(bpy.path.abspath(filepath))
-    basename = os.path.splitext(filename)[0]    
+    basename = os.path.splitext(filename)[0]
+    if not filepath:
+        return filepath
 
     master_filepath = os.path.join(dirname, basename + '.xcf')
     if not os.path.exists(master_filepath):
@@ -585,6 +587,62 @@ class SEQUENCER_OT_adh_fade_in_out_selected_strips(Operator):
         retval = context.window_manager.invoke_props_dialog(self)
         self.invoked = True
         return retval
+
+class ImageMixin:
+    filepath = StringProperty(subtype = "FILE_PATH")
+
+    @classmethod
+    def poll(self, context):
+        space = context.space_data
+        return space.type == "IMAGE_EDITOR"
+
+    def get_master_file(self, context):
+        space = context.space_data
+        filepath = None
+        if not self.filepath and space.image and space.image.filepath:
+            self.filepath = space.image.filepath
+        filepath = get_master_file(self.filepath)
+
+        return filepath
+
+class IMAGE_OT_adh_external_edit_master(Operator, ImageMixin):
+    bl_idname = 'image.adh_external_edit_master'
+    bl_label = 'Master Image Edit Externally'
+    bl_options = {'REGISTER', 'UNDO'}
+
+    def execute(self, context):
+        filepath = self.get_master_file(context)
+        if not filepath:
+            self.report({"ERROR"}, "No image file associated with this editor")
+            return {'CANCELLED'}
+
+        edit_image_file(context, filepath)
+        return {'FINISHED'}
+
+class IMAGE_OT_adh_reload_from_master_file(Operator, ImageMixin):
+    bl_idname = 'image.adh_reload_from_master_file'
+    bl_label = 'Reload From Master File'
+    bl_options = {'REGISTER', 'UNDO'}
+
+    def execute(self, context):
+        if not HAS_XCFTOOLS:
+            self.report({"ERROR"}, "Needs xcf2png from xcftools package")
+            return {'CANCELLED'}
+
+        master_filepath = self.get_master_file(context)
+        if not master_filepath:
+            self.report({"ERROR"}, "No image file associated with this editor")
+            return {'CANCELLED'}
+
+        if master_filepath != self.filepath:
+            status, output_str = subprocess.getstatusoutput(
+                "xcf2png %s -o %s" % (master_filepath, self.filepath))
+            if status != 0:
+                self.report({"WARNING"}, output_str.replace("\n", " "))
+
+        context.space_data.image.reload()
+        context.area.tag_redraw()
+        return {'FINISHED'}
 
 def draw_view3d_background_panel(self, context):
     layout = self.layout
