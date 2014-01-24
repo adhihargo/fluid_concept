@@ -179,6 +179,62 @@ def render_image(context, filepath, scale = 100, scene = None, opengl = False):
     if context.space_data.type == 'VIEW_3D':
         context.space_data.region_3d.view_perspective = prev['view_persp']
 
+class OBJECT_OT_adh_copy_action(Operator):
+    bl_idname = 'object.adh_copy_action'
+    bl_label = 'Copy All Actions'
+    bl_options = {'REGISTER', 'UNDO'}
+
+    offset_frame = IntProperty(name = "Offset", subtype = "TIME")
+
+    @classmethod
+    def poll(self, context):
+        return context.active_object
+
+    def execute(self, context):
+        obj = context.active_object
+        other_objs = sorted(
+            [o for o in context.selected_objects if o != obj],
+            key = lambda o: ((o.location + o.delta_location) -
+                             (obj.location + obj.delta_location)).length)
+        actions = {}
+
+        for owner, key in [(obj, "object"), (obj.data, "data")]:
+            if owner.animation_data and owner.animation_data.action:
+                actions[key] = owner.animation_data.action
+
+        offset = self.offset_frame
+        for o in other_objs:
+            key = "location"
+            delta = ((getattr(o, key) + getattr(o, "delta_"+key)) -
+                     (getattr(obj, key) + getattr(obj, "delta_"+key)))
+            setattr(o, "delta_"+key, delta)
+
+            for owner, key in [(o, "object"), (o.data, "data")]:
+                if not actions.get(key, None):
+                    continue
+                owner.animation_data_create()
+                owner.animation_data.action = None
+
+                action_name = actions[key].name + "_copy_" + o.name
+                action = bpy.data.actions.get(action_name, None)
+                if action:
+                    bpy.data.actions.remove(action)
+                action = actions[key].copy()
+                action.name = action_name
+                owner.animation_data.action = action
+
+                fcurves = action.fcurves
+                for curve in fcurves:
+                    keyframePoints = curve.keyframe_points
+                    for keyframe in keyframePoints:
+                        keyframe.co[0] += offset
+                        keyframe.handle_left[0] += offset
+                        keyframe.handle_right[0] += offset
+
+            offset += self.offset_frame
+
+        return {'FINISHED'}
+
 class MESH_OT_adh_edit_uvmap_image(Operator):
     bl_idname = 'mesh.adh_edit_uvmap_image'
     bl_label = 'Edit UVMap Image'
