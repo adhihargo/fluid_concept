@@ -79,7 +79,7 @@ def get_xcf_layers(filepath):
     if not (HAS_XCFTOOLS and os.path.exists(filepath)):
         return []
 
-    status, output_str = subprocess.getstatusoutput("xcfinfo %s" % filepath)
+    status, output_str = subprocess.getstatusoutput('xcfinfo "%s"' % filepath)
     if(status != 0):
         return []
 
@@ -89,7 +89,8 @@ def get_xcf_layers(filepath):
     return output
 
 def get_master_file(filepath):
-    dirname, filename = os.path.split(bpy.path.abspath(filepath))
+    filepath = bpy.path.abspath(filepath)
+    dirname, filename = os.path.split(filepath)
     basename = os.path.splitext(filename)[0]
     if not filepath:
         return filepath
@@ -130,6 +131,15 @@ def get_topmost_channel(sequences, frame_min, frame_max):
                                      sequences))
     return max(map(lambda s: s.channel, sequences_in_range))\
         if sequences_in_range else 1
+
+def get_uvmap_image(uvmap):
+    image = None
+    for uvmap_poly in uvmap.data:
+        if uvmap_poly.image:
+            image = uvmap_poly.image
+            break
+
+    return image
 
 def get_fcurve(action, sequence):
     channel = 'volume' if sequence.type == 'SOUND' else 'blend_alpha'
@@ -235,32 +245,6 @@ class OBJECT_OT_adh_copy_action(Operator):
 
             offset += self.offset_frame
 
-        return {'FINISHED'}
-
-class MESH_OT_adh_edit_uvmap_image(Operator):
-    bl_idname = 'mesh.adh_edit_uvmap_image'
-    bl_label = 'Edit UVMap Image'
-    bl_options = {'REGISTER', 'UNDO'}
-
-    @classmethod
-    def poll(self, context):
-        obj = context.object
-        return obj and obj.type == 'MESH' and obj.data.uv_textures.active
-
-    def execute(self, context):
-        obj = context.object
-        image = None
-        uvmap = obj.data.uv_textures.active
-        for uvmap_poly in uvmap.data:
-            if uvmap_poly.image:
-                image = uvmap_poly.image
-                break
-
-        if not image:
-            return {'CANCELLED'}
-        filepath = get_master_file(bpy.path.abspath(image.filepath))
-        edit_image_file(context, filepath)
-        
         return {'FINISHED'}
 
 class MESH_OT_adh_project_background_image_to_mesh(Operator):
@@ -484,33 +468,6 @@ class SEQUENCER_OT_adh_add_annotation_image_strip(Operator):
         self.invoked = True
         return retval
 
-class SEQUENCER_OT_adh_edit_strip_image(Operator):
-    bl_idname = 'sequencer.adh_edit_strip_image'
-    bl_label = 'Edit Strip Image'
-    bl_options = {'REGISTER', 'UNDO'}
-
-    @classmethod
-    def poll(self, context):
-        return context.sequences and len(context.selected_sequences) == 1
-
-    def execute(self, context):
-        sequence = context.selected_editable_sequences[0]
-        if isinstance(sequence, bpy.types.EffectSequence)\
-                and sequence.input_count > 0 and sequence.input_1:
-            sequence = sequence.input_1
-
-        current_frame = context.scene.frame_current
-        if(sequence.type == 'IMAGE'):
-            sequence_element = sequence.strip_elem_from_frame(current_frame)
-            filedir = bpy.path.abspath(sequence.directory)
-            filename = sequence_element.filename
-            filepath = os.path.join(filedir, filename)
-            edit_image_file(context, filepath)
-        else:
-            return {'CANCELLED'}
-
-        return {'FINISHED'}
-
 class SEQUENCER_OT_adh_fade_in_out_selected_strips(Operator):
     bl_idname = 'sequencer.adh_fade_in_out_selected_strips'
     bl_label = 'Fade In/Out Selected Strips'
@@ -589,21 +546,32 @@ class SEQUENCER_OT_adh_fade_in_out_selected_strips(Operator):
         return retval
 
 class ImageMixin:
-    filepath = StringProperty(subtype = "FILE_PATH")
+    image = None
+    filepath = None
+    master_filepath = None
 
-    @classmethod
-    def poll(self, context):
+    def init_variables(self, context):
+        scene = context.scene
         space = context.space_data
-        return space.type == "IMAGE_EDITOR"
+        obj = context.active_object
+        seq = context.selected_editable_sequences[0]\
+            if context.selected_editable_sequences else None
 
-    def get_master_file(self, context):
-        space = context.space_data
-        filepath = None
-        if not self.filepath and space.image and space.image.filepath:
-            self.filepath = space.image.filepath
-        filepath = get_master_file(self.filepath)
+        if space.type == "IMAGE_EDITOR" and space.image:
+            self.image = space.image
+            self.filepath = bpy.path.abspath(space.image.filepath)
+        elif obj and obj.type == 'MESH' and obj.data.uv_textures.active:
+            self.image = get_uvmap_image(obj.data.uv_textures.active)
+            if self.image:
+                self.filepath = bpy.path.abspath(self.image.filepath)
+        elif seq and seq.type == 'IMAGE':
+            seq_element = seq.strip_elem_from_frame(scene.frame_current)
+            filedir = bpy.path.abspath(seq.directory)
+            filename = seq_element.filename
+            self.filepath = os.path.join(filedir, filename)
 
-        return filepath
+        if self.filepath:
+            self.master_filepath = get_master_file(self.filepath)
 
 class IMAGE_OT_adh_external_edit_master(Operator, ImageMixin):
     bl_idname = 'image.adh_external_edit_master'
@@ -611,12 +579,12 @@ class IMAGE_OT_adh_external_edit_master(Operator, ImageMixin):
     bl_options = {'REGISTER', 'UNDO'}
 
     def execute(self, context):
-        filepath = self.get_master_file(context)
-        if not filepath:
-            self.report({"ERROR"}, "No image file associated with this editor")
+        self.init_variables(context)
+        if not self.filepath:
+            self.report({"WARNING"}, "No image file within context.")
             return {'CANCELLED'}
 
-        edit_image_file(context, filepath)
+        edit_image_file(context, self.master_filepath)
         return {'FINISHED'}
 
 class IMAGE_OT_adh_reload_from_master_file(Operator, ImageMixin):
@@ -626,21 +594,22 @@ class IMAGE_OT_adh_reload_from_master_file(Operator, ImageMixin):
 
     def execute(self, context):
         if not HAS_XCFTOOLS:
-            self.report({"ERROR"}, "Needs xcf2png from xcftools package")
+            self.report({"ERROR"}, "Needs 'xcf2png' from xcftools package")
             return {'CANCELLED'}
 
-        master_filepath = self.get_master_file(context)
-        if not master_filepath:
-            self.report({"ERROR"}, "No image file associated with this editor")
+        self.init_variables(context)
+        if not self.filepath:
+            self.report({"WARNING"}, "No image file within context.")
             return {'CANCELLED'}
 
-        if master_filepath != self.filepath:
+        if self.master_filepath.lower().endswith(".xcf"):
             status, output_str = subprocess.getstatusoutput(
-                "xcf2png %s -o %s" % (master_filepath, self.filepath))
+                'xcf2png "%s" -o "%s"' % (self.master_filepath, self.filepath))
             if status != 0:
                 self.report({"WARNING"}, output_str.replace("\n", " "))
 
-        context.space_data.image.reload()
+        if self.image:
+            self.image.reload()
         context.area.tag_redraw()
         return {'FINISHED'}
 
