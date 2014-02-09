@@ -23,8 +23,9 @@ import os
 import re
 import subprocess
 import tempfile
-from bpy.types import Operator, Menu
-from bpy.props import BoolProperty, EnumProperty, IntProperty, StringProperty
+from bpy.types import Operator, Menu, Panel
+from bpy.props import BoolProperty, EnumProperty, IntProperty, StringProperty,\
+    PointerProperty
 
 bl_info = {
     "name": "ADH Fluid Concept",
@@ -301,7 +302,7 @@ class MESH_OT_adh_project_background_image_to_mesh(Operator):
         scene.camera = prev_camera
 
         uvmap = obj.data.uv_textures.active
-        uvmap.name = PRJ_UVMAP_PREFIX
+        uvmap.name = PRJ_UVMAP_PREFIX + scene.camera.name
         for uvmap_poly in uvmap.data:
             uvmap_poly.image = image
 
@@ -464,7 +465,11 @@ class SEQUENCER_OT_adh_add_annotation_image_strip(Operator):
         return {'FINISHED'}
 
     def invoke(self, context, event):
-        self.filepath = '//frame_%04d.png' % (context.scene.frame_current)
+        props = context.scene.adh_fluid_concept
+        if props.new_strip_image_filepath:
+            self.filepath = props.new_strip_image_filepath
+        else:            
+            self.filepath = '//frame_%04d.png' % (context.scene.frame_current)
 
         retval = context.window_manager.invoke_props_dialog(self)
         self.invoked = True
@@ -663,11 +668,79 @@ class IMAGE_OT_adh_create_scaled_copy(Operator, ImageMixin):
 
         return {'FINISHED'}
 
+class VIEW3D_PT_fluid_concept(Panel):
+    bl_label = "ADH Fluid Concept"
+    bl_space_type = "VIEW_3D"
+    bl_region_type = "UI"
+
+    def draw(self, context):
+        layout = self.layout
+
+        col = layout.column(align = True)
+        col.label("Background Images:")
+        col.operator('view3d.adh_background_image_from_scene',
+                     text = "Add From Scene")
+        col.operator('mesh.adh_project_background_image_to_mesh',
+                     text = "Project to Mesh")
+        
+        col = layout.column(align = True)
+        col.label("Mesh Image:")
+        col.operator("image.adh_external_edit_master",
+                     text = "Edit Externally")
+        col.operator("image.adh_reload_from_master_file",
+                     text = "Reload From Master")
+        col.operator('image.adh_create_scaled_copy',
+                     text = "Create Scaled Copy")
+
+class IMAGE_PT_fluid_concept(Panel):
+    bl_label = "ADH Fluid Concept"
+    bl_space_type = "IMAGE_EDITOR"
+    bl_region_type = "UI"
+
+    def draw(self, context):
+        layout = self.layout
+
+        col = layout.column(align = True)
+        col.operator("image.adh_external_edit_master",
+                     text = "Edit Externally")
+        col.operator("image.adh_reload_from_master_file",
+                     text = "Reload From Master")
+        col.operator('image.adh_create_scaled_copy',
+                     text = "Create Scaled Copy")
+
+class SEQUENCER_PT_fluid_concept(Panel):
+    bl_label = "ADH Fluid Concept"
+    bl_space_type = "SEQUENCE_EDITOR"
+    bl_region_type = "UI"
+
+    def draw(self, context):
+        layout = self.layout
+        props = context.scene.adh_fluid_concept
+
+        layout.prop(props, "new_strip_image_filepath", text = "")
+        layout.operator("sequencer.adh_add_annotation_image_strip")
+
+        col = layout.column(align = True)
+        col.operator("image.adh_external_edit_master",
+                     text = "Edit Externally")
+        col.operator("image.adh_reload_from_master_file",
+                     text = "Reload From Master")
+
+        col = layout.column(align = True)
+        col.operator("sequencer.adh_fade_in_out_selected_strips")
+class ADH_FluidConceptProps(bpy.types.PropertyGroup):
+    new_strip_image_filepath = StringProperty(
+        name = "Image Filepath",
+        subtype = "FILE_PATH")
+
 def draw_view3d_background_panel(self, context):
     layout = self.layout
 
-    layout.operator('view3d.adh_background_image_from_scene',
-                    text = "Add From Scene")
+    col = layout.column(align = True)
+    col.operator('view3d.adh_background_image_from_scene',
+                 text = "Add From Scene")
+    col.operator('mesh.adh_project_background_image_to_mesh',
+                 text = "Project to Mesh")
 
 def draw_sequencer_add_strip_menu(self, context):
     layout = self.layout
@@ -677,14 +750,19 @@ def draw_sequencer_add_strip_menu(self, context):
                     text = "Annotation Image")
 
 def register():
-    bpy.types.VIEW3D_PT_background_image.append(draw_view3d_background_panel)
+    bpy.types.VIEW3D_PT_background_image.prepend(draw_view3d_background_panel)
     bpy.types.SEQUENCER_MT_add.append(draw_sequencer_add_strip_menu)
     bpy.utils.register_module(__name__)
+
+    bpy.types.Scene.adh_fluid_concept = PointerProperty\
+        (type = ADH_FluidConceptProps)
 
 def unregister():
     bpy.types.VIEW3D_PT_background_image.remove(draw_view3d_background_panel)
     bpy.types.SEQUENCER_MT_add.remove(draw_sequencer_add_strip_menu)
     bpy.utils.unregister_module(__name__)
+
+    del bpy.types.Scene.adh_fluid_concept
 
 if __name__ == "__main__":
     register()
