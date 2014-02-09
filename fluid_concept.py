@@ -43,6 +43,8 @@ PRJ_UVMAP_PREFIX = 'PRJ_UVMAP_'
 PRJ_MAT_PREFIX = 'PRJ_MAT_'
 PRJ_TEX_PREFIX = 'PRJ_TEX_'
 BASE_LAYER_SEPARATOR = '_'
+HAS_CONVERT = any(filter(lambda p: os.path.exists(os.path.join(p, 'convert')),
+                          os.environ.get('PATH', '').split(os.pathsep)))
 HAS_XCFTOOLS = any(filter(lambda p: os.path.exists(os.path.join(p, 'xcf2png')),
                           os.environ.get('PATH', '').split(os.pathsep)))
 XCFINFO_OUTPUT_RE = re.compile(r"""
@@ -611,6 +613,54 @@ class IMAGE_OT_adh_reload_from_master_file(Operator, ImageMixin):
         if self.image:
             self.image.reload()
         context.area.tag_redraw()
+        return {'FINISHED'}
+
+class IMAGE_OT_adh_create_scaled_copy(Operator, ImageMixin):
+    bl_idname = 'image.adh_create_scaled_copy'
+    bl_label = 'Create Scaled Down Image Copy'
+    bl_options = {'REGISTER', 'UNDO'}
+
+    def execute(self, context):
+        if not HAS_CONVERT:
+            self.report({"ERROR"}, "Needs 'convert' from ImageMagick package")
+            return {'CANCELLED'}
+
+        self.init_variables(context)
+        if not self.image:
+            self.report({"WARNING"}, "No image data within context.")
+            return {'CANCELLED'}
+
+        # Infer the original and scaled-down files' name.
+        dirname, ori_filename = os.path.split(self.filepath)
+        basename = os.path.splitext(ori_filename)[0]
+        scl_filename = ori_filename
+        if basename.endswith("_025"):
+            self.filepath, scl_filepath = self.filepath[:-4], self.filepath
+        else:
+            scl_filename = basename + "_025.png"
+            scl_filepath = os.path.join(dirname, scl_filename)
+
+        # Get the master file, and reload from it if exists.
+        if self.master_filepath.lower().endswith(".xcf"):
+            status, output_str = subprocess.getstatusoutput(
+                'xcf2png "%s" -o "%s"' % (self.master_filepath, self.filepath))
+            if status != 0:
+                self.report({"WARNING"}, output_str.replace("\n", " "))
+
+        # Create the scaled-down image.
+        status, output_str = subprocess.getstatusoutput(
+            'convert "%s" -resize "25%%" "%s"' % (self.filepath, scl_filepath))
+        if status != 0:
+            self.report({"ERROR"}, output_str.replace("\n", " "))
+            return {"CANCELLED"}
+
+        # Load the scaled-down image in Blender, replace the original with it.
+        scl_image = bpy.data.images.get(scl_filename, None)
+        if not scl_image:
+            scl_image = self.image.copy()
+            scl_image.name = scl_filename
+        scl_image.filepath = scl_filepath
+
         return {'FINISHED'}
 
 def draw_view3d_background_panel(self, context):
