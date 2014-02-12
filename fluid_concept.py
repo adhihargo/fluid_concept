@@ -668,6 +668,166 @@ class IMAGE_OT_adh_create_scaled_copy(Operator, ImageMixin):
 
         return {'FINISHED'}
 
+NODE_INCREMENT_X = 50
+NODE_INCREMENT_Y = 50
+RL_PASS_IMAGE = [('combined', 'Image'), ('mist', 'Mist'), ('color', 'Color'),
+                 ('diffuse', 'Diffuse'),
+                 ('specular', 'Specular'), ('shadow', 'Shadow'),
+                 ('emit', 'Emit'), ('ambient_occlusion', 'AO'),
+                 ('environment', 'Environment'), ('indirect', 'Indirect'),
+                 ('reflection', 'Reflect'), ('refraction', 'Refract')]
+RL_PASS_DATA = [('z', 'Z'), ('vector', 'Speed'), ('normal', 'Normal'),
+                ('object_index', 'IndexOB'), ('material_index', 'IndexMA')]
+RL_NODE_PREFIX = "RL "
+FO_NODE_PREFIX = "FOI "
+FOD_NODE_PREFIX = "FOD "
+FI_NODE_PREFIX = "FI "
+RL_NODE_TYPE = "CompositorNodeRLayers"
+FO_NODE_TYPE = "CompositorNodeOutputFile"
+FI_NODE_TYPE = "CompositorNodeImage"
+
+def remove_unconnected_node_inputs(links, node):
+    incoming_links = [l.to_socket for l in links
+                      if l.to_node == node and l.from_socket.enabled]
+    for i in filter(lambda i: not i in incoming_links, node.inputs):
+        node.inputs.remove(i)
+
+def create_node(scene, key, node_type):
+    # Create a new node in SCENE's node tree of NODE_TYPE type, or
+    # reuse one for which KEY predicate returns True.
+    scene.use_nodes = True
+    tree = scene.node_tree
+
+    possible_nodes = [
+        n for n in tree.nodes if n.bl_idname == node_type and key(n)]
+    node = possible_nodes[0] if possible_nodes else\
+        tree.nodes.new(type = node_type)
+    node.show_preview = False
+    node.select = False
+
+    return node
+
+def create_fo_node(scene, prefix):
+    props = scene.adh_fluid_concept
+    tree = scene.node_tree
+
+    node_name = prefix + scene.name
+    node = create_node(
+        scene, lambda n: n.name.startswith(node_name), FO_NODE_TYPE)
+    node.location = (-(node.width + NODE_INCREMENT_X), 0)
+    node.name = node_name
+    node.base_path = props.renderpass_basepath
+    node.format.color_mode = 'RGBA'
+
+    remove_unconnected_node_inputs(tree.links, node)
+    return node
+
+def create_fi_node(scene, basepath, dirname, filename):
+    f_abspath = os.path.join(basepath, dirname, filename)
+    possible_images = [i for i in bpy.data.images if i.filepath == f_abspath]
+    image = possible_images[0] if possible_images\
+        else bpy.data.images.load(f_abspath)
+
+    node_name = FI_NODE_PREFIX + "_".join(
+        [bpy.path.basename(basepath), dirname])
+    node = create_node(
+        scene, lambda n: n.name.startswith(node_name), FI_NODE_TYPE)
+    node.image = image
+    node.name = node_name
+    node.label = dirname
+    node.hide = True
+    node.width_hidden = 100.0
+
+    return node
+
+class NODE_OT_adh_save_render_passes(Operator):
+    bl_idname = "node.adh_save_render_passes"
+    bl_label = "Save Render Passes"
+    bl_options = {'REGISTER', 'UNDO'}
+
+    def execute(self, context):
+        scene = context.scene
+        props = scene.adh_fluid_concept
+        scene.use_nodes = True
+        tree = scene.node_tree
+
+        fo_node = create_fo_node(scene, FO_NODE_PREFIX)
+        fod_node = create_fo_node(scene, FOD_NODE_PREFIX)
+        fod_node.location[1] -= (fo_node.dimensions[1] + NODE_INCREMENT_Y)
+        fod_node.format.file_format = "OPEN_EXR"
+        
+        node_loc = [0, 0]
+        for rl in scene.render.layers:
+            rl_node = create_node(
+                scene, lambda n: n.layer == rl.name, RL_NODE_TYPE)
+            rl_node.layer = rl.name
+            if not rl_node.parent:
+                rl_node.location = node_loc
+            node_loc[1] -= (rl_node.dimensions[1] + NODE_INCREMENT_Y)
+            rl_node.name = RL_NODE_PREFIX + rl.name
+            rl_node.label = rl_node.name
+
+            def link_pass_to_file(node, pass_name, output_name):
+                rl_pass = getattr(rl, "use_pass_" + pass_name, False)
+                if not rl_pass:
+                    return
+            
+                output_path = os.sep.join(
+                    [rl.name+'_'+pass_name, pass_name+'_'])
+                rl_output = rl_node.outputs.get(output_name)
+                fo_input = node.inputs.get(output_path, None)
+                if fo_input:
+                    return
+
+                fo_slot = node.file_slots.new(output_path)
+                fo_input = node.inputs.get(output_path, None)
+                tree.links.new(rl_output, fo_input)
+
+            # Connect passes
+            for (p, o) in RL_PASS_IMAGE:
+                link_pass_to_file(fo_node, p, o)
+            for (p, o) in RL_PASS_DATA:
+                link_pass_to_file(fod_node, p, o)
+
+        return {'FINISHED'}
+
+class NODE_OT_adh_load_render_passes(Operator):
+    bl_idname = "node.adh_load_render_passes"
+    bl_label = "Load Render Passes"
+    bl_options = {'REGISTER', 'UNDO'}
+
+    def execute(self, context):
+        scene = context.scene
+        props = scene.adh_fluid_concept
+        scene.use_nodes = True
+        tree = scene.node_tree
+
+        # To make life easier, and the code faster, files in the
+        # folders below BASEPATH is assumed to be image files ONLY,
+        # and sequential. As it should be if we're well-organized.
+        node_loc = [0, 0]
+        basepath = bpy.path.abspath(props.renderpass_basepath)
+        for d in sorted([d for d in os.listdir(basepath)
+                         if os.path.isdir(os.path.join(basepath, d))]):
+            d_abspath = os.path.join(basepath, d)
+            files = sorted([f for f in os.listdir(d_abspath)
+                            if os.path.isfile(os.path.join(d_abspath, f))])
+            file_count = len(files)
+            if file_count == 0:
+                continue
+
+            fi_node = create_fi_node(scene, basepath, d, files[0])
+            if not fi_node.parent:
+                fi_node.location = node_loc
+            node_loc[1] -= (fi_node.dimensions[1] + NODE_INCREMENT_Y)
+            if file_count > 1:
+                fi_node.image.source = 'SEQUENCE'
+                fi_node.frame_duration = file_count
+            else:
+                fi_node.image.source = 'FILE'
+
+        return {'FINISHED'}    
+
 class VIEW3D_PT_fluid_concept(Panel):
     bl_label = "ADH Fluid Concept"
     bl_space_type = "VIEW_3D"
@@ -728,10 +888,32 @@ class SEQUENCER_PT_fluid_concept(Panel):
 
         col = layout.column(align = True)
         col.operator("sequencer.adh_fade_in_out_selected_strips")
+
+class NODE_PT_fluid_concept(Panel):
+    bl_label = "ADH Fluid Concept"
+    bl_space_type = "NODE_EDITOR"
+    bl_region_type = "TOOLS"
+
+    def draw(self, context):
+        layout = self.layout
+        space = context.space_data
+        props = context.scene.adh_fluid_concept
+
+        if space.tree_type == 'CompositorNodeTree':
+            col = layout.column(align = True)
+            col.prop(props, "renderpass_basepath", text = "")
+            col.operator("node.adh_save_render_passes")
+            col.operator("node.adh_load_render_passes")
+
 class ADH_FluidConceptProps(bpy.types.PropertyGroup):
     new_strip_image_filepath = StringProperty(
         name = "Image Filepath",
         subtype = "FILE_PATH")
+
+    renderpass_basepath = StringProperty(
+        name = "Render Passes Base Path",
+        subtype = "DIR_PATH",
+        default = "//")
 
 def draw_view3d_background_panel(self, context):
     layout = self.layout
