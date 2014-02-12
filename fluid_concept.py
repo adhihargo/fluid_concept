@@ -30,8 +30,8 @@ from bpy.props import BoolProperty, EnumProperty, IntProperty, StringProperty,\
 bl_info = {
     "name": "ADH Fluid Concept",
     "author": "Adhi Hargo",
-    "version": (1, 0, 0),
-    "blender": (2, 68, 0),
+    "version": (1, 1, 0),
+    "blender": (2, 69, 0),
     "location": "View3D > Tools > ADH Fluid Concept",
     "description": "In-house production tools.",
     "warning": "",
