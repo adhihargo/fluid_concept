@@ -552,6 +552,33 @@ class SEQUENCER_OT_adh_fade_in_out_selected_strips(Operator):
         self.invoked = True
         return retval
 
+class SEQUENCER_OT_adh_set_strip_length(Operator):
+    """Set length of selected sequence strips."""
+    bl_idname = 'sequencer.adh_set_strip_length'
+    bl_label = 'Set Strip Length'
+    bl_options = {'REGISTER', 'UNDO'}
+
+    strip_length = IntProperty(name = "Strip Length", default = 10)
+
+    @classmethod
+    def poll(self, context):
+        return context.selected_sequences
+
+    def execute(self, context):
+        scene = context.scene
+        sequences = scene.sequence_editor.sequences
+        for seq in context.selected_sequences:
+            seq.frame_final_end = seq.frame_final_start + self.strip_length
+        
+        return {'FINISHED'}
+
+    def invoke(self, context, event):
+        seq = context.scene.sequence_editor.active_strip
+        if seq:
+            self.strip_length = seq.frame_final_duration
+
+        return self.execute(context)
+
 class ImageMixin:
     image = None
     filepath = None
@@ -887,7 +914,11 @@ class SEQUENCER_PT_fluid_concept(Panel):
                      text = "Reload From Master")
 
         col = layout.column(align = True)
-        col.operator("sequencer.adh_fade_in_out_selected_strips")
+        col.operator_context = 'INVOKE_DEFAULT'
+        col.operator("sequencer.adh_fade_in_out_selected_strips",
+                     text = "Fade In/Out")
+        col.operator("sequencer.adh_set_strip_length",
+                     text = "Set Length")
 
 class NODE_PT_fluid_concept(Panel):
     bl_label = "ADH Fluid Concept"
