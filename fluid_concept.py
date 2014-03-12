@@ -579,6 +579,50 @@ class SEQUENCER_OT_adh_set_strip_length(Operator):
 
         return self.execute(context)
 
+class SEQUENCER_OT_adh_align_strips(Operator):
+    """Align selected sequence strips' start frame. CTRL: Align end frame.
+    SHIFT: Handles only."""
+    bl_idname = 'sequencer.adh_align_strips'
+    bl_label = 'Align Strips'
+    bl_options = {'REGISTER', 'UNDO'}
+
+    align_frame = IntProperty(name = "Align Frame", default = 1)
+    align_side = 'start'
+    only_handle = False
+
+    @classmethod
+    def poll(self, context):
+        return len(context.selected_sequences) > 1
+
+    def execute(self, context):
+        scene = context.scene
+        sequences = [seq for seq in context.selected_sequences
+                     if seq != context.scene.sequence_editor.active_strip]
+        for seq in sequences:
+            if self.only_handle:
+                if self.align_side == 'start':
+                    seq.frame_final_start = self.align_frame
+                else:
+                    seq.frame_final_end = self.align_frame
+            else:
+                seq.frame_start = self.align_frame - (
+                    seq.frame_offset_start if self.align_side == 'start' else
+                    seq.frame_final_duration)
+
+        return {'FINISHED'}
+
+    def invoke(self, context, event):
+        seq = context.scene.sequence_editor.active_strip
+        if event.ctrl:
+            self.align_side = 'end'
+        if event.shift:
+            self.only_handle = True
+        if seq:
+            self.align_frame = {'start': seq.frame_final_start,
+                                'end': seq.frame_final_end}[self.align_side]
+
+        return self.execute(context)
+
 class ImageMixin:
     image = None
     filepath = None
@@ -919,6 +963,8 @@ class SEQUENCER_PT_fluid_concept(Panel):
                      text = "Fade In/Out")
         col.operator("sequencer.adh_set_strip_length",
                      text = "Set Length")
+        col.operator("sequencer.adh_align_strips",
+                     text = "Align")
 
 class NODE_PT_fluid_concept(Panel):
     bl_label = "ADH Fluid Concept"
