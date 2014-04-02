@@ -19,13 +19,14 @@
 # Author: Adhi Hargo (cadmus.sw@gmail.com)
 
 import bpy
+import math
 import os
 import re
 import subprocess
 import tempfile
 from bpy.types import Operator, Menu, Panel
-from bpy.props import BoolProperty, EnumProperty, IntProperty, StringProperty,\
-    PointerProperty
+from bpy.props import BoolProperty, FloatProperty, EnumProperty, IntProperty,\
+    StringProperty, PointerProperty
 
 bl_info = {
     "name": "ADH Fluid Concept",
@@ -249,6 +250,100 @@ class OBJECT_OT_adh_copy_action(Operator):
             offset += self.offset_frame
 
         return {'FINISHED'}
+
+class OBJECT_OT_adh_create_deform_curve(Operator):
+    bl_idname = 'object.adh_create_deform_curve'
+    bl_label = 'Create Deform Curve'
+    bl_options = {'REGISTER', 'UNDO'}
+
+    deform_axis = EnumProperty(
+        name = "Deformation Axis",
+        items = [('px', '+X', "+X"), ('py', '+Y', "+Y"), ('pz', '+Z', "+Z"),
+                 ('nx', '-X', "-X"), ('ny', '-Y', "-Y"), ('nz', '-Z', "-Z")],
+        default = 'py')
+
+    handle_type = EnumProperty(
+        name = "Handle Type",
+        description = "Curve handle type: Free or Aligned",
+        items = [('FREE', 'Free', 'Handles free from each other'),
+                 ('ALIGNED', 'Aligned', 'Handles aligned to each other')],
+        default = 'FREE')
+
+    curve_size = FloatProperty(
+        name = "Curve Size",
+        default = 1.0)
+
+    curve_data = None
+
+    @classmethod
+    def poll(self, context):
+        return context.object != None
+
+    def draw(self, context):
+        layout = self.layout
+
+        column = layout.column(align = True)
+        row = column.row(align = True)
+        row.prop_enum(self, "deform_axis", 'px')
+        row.prop_enum(self, "deform_axis", 'py')
+        row.prop_enum(self, "deform_axis", 'pz')
+
+        column = layout.column(align = True)
+        row = column.row(align = True)
+        row.prop(self, "curve_size")
+        row = column.row(align = True)
+        row.prop_enum(self, "handle_type", 'FREE')
+        row.prop_enum(self, "handle_type", 'ALIGNED')
+
+    def execute(self, context):
+        self.process_object(context, context.active_object)
+        for obj in context.selected_objects:
+            if obj == context.active_object:
+                continue
+            for mod in obj.modifiers:
+                if mod.type == 'CURVE' and mod.object != None:
+                    continue
+            self.process_object(context, obj)
+
+        return {'FINISHED'}
+
+    def process_object(self, context, obj):
+        scene = context.scene
+
+        axis = ord(self.deform_axis[1]) - ord('x')
+        curve_name = "CURVE_" + obj.name
+        curve_data = bpy.data.curves.new(curve_name, 'CURVE')
+        curve_data.dimensions = '3D'            
+
+        sign = -1 if self.deform_axis[0] == 'n' else 1
+        spline = curve_data.splines.new('BEZIER')
+        spline.bezier_points.add()
+        p1, p2 = spline.bezier_points[0], spline.bezier_points[1]
+        p1.handle_left[axis] = -0.25 * sign * self.curve_size
+        p1.handle_right[axis] = 0.25 * sign * self.curve_size
+        p2.co[axis] = 1.5 * sign * self.curve_size
+        p2.handle_left[axis] = 1.25 * sign * self.curve_size
+        p2.handle_right[axis] = 1.75 * sign * self.curve_size
+        p1.handle_left_type = self.handle_type
+        p1.handle_right_type = self.handle_type
+        p2.handle_left_type = self.handle_type
+        p2.handle_right_type = self.handle_type
+        if axis > 0:
+            p1.tilt = math.radians(90.0 * axis)
+            p2.tilt = math.radians(90.0 * axis)
+
+        curve = bpy.data.objects.new(curve_name, curve_data)
+        curve.matrix_world = obj.matrix_world
+        scene.objects.link(curve)
+        
+        mod = obj.modifiers.new(curve_name, "CURVE")
+        mod.object = curve
+        mod.deform_axis = ('POS_X', 'POS_Y', 'POS_Z',
+                           'NEG_X', 'NEG_Y', 'NEG_Z')[axis]
+
+        obj.select = False
+        curve.select = True
+        scene.objects.active = curve
 
 class MESH_OT_adh_project_background_image_to_mesh(Operator):
     bl_idname = 'mesh.adh_project_background_image_to_mesh'
