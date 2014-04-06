@@ -719,7 +719,7 @@ class SEQUENCER_OT_adh_align_strips(Operator):
 
     @classmethod
     def poll(self, context):
-        return len(context.selected_sequences) > 1
+        return context.selected_sequences
 
     def execute(self, context):
         scene = context.scene
