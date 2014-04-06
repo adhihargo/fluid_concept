@@ -55,6 +55,10 @@ XCFINFO_OUTPUT_RE = re.compile(r"""
 (?P<color_mode>\S+)\s
 (?P<layer_mode>\S+)\s
 (?P<layer_name>.+)$""", re.VERBOSE)
+IMAGE_RESOLUTION_RE = re.compile(r"""
+^\s*(?P<width>\d*)
+\s*x\s*
+(?P<height>\d*)\s*$""", re.VERBOSE)
 
 def create_texture_material(obj, image, is_transparent = False):
     uvmap = obj.data.uv_textures.active
@@ -433,6 +437,24 @@ class MESH_OT_adh_project_background_image_to_mesh(Operator):
         self.invoked = True
         return retval
 
+def get_image_resolution(res_str, width_per_height):
+    match = IMAGE_RESOLUTION_RE.match(res_str)
+    if not match:
+        return None
+
+    res = None
+    width = int(match.group('width')) if match.group('width') else 0
+    height = int(match.group('height')) if match.group('height') else 0
+    if (width + height) != 0:
+        if width == 0:
+            width = int(height * width_per_height)
+        elif height == 0:
+            height = int(width / width_per_height)
+        if (width + height) != 0:
+            res = (width, height)
+
+    return res
+
 class CreateImageMixin:
     transparent = BoolProperty(name = "Transparent", default = False)
     
@@ -448,12 +470,64 @@ class CreateImageMixin:
             self.report({'ERROR'}, output_str)
         return (status == 0)
 
+class MESH_OT_adh_create_card_image(Operator, CreateImageMixin):
+    bl_idname = 'mesh.adh_create_card_image'
+    bl_label = 'Create Card Image'
+    bl_options = {'REGISTER', 'UNDO'}
+
+    filepath = StringProperty(name = "File Path",
+                              subtype = 'FILE_PATH', default = "//image.png")
+    resolution = StringProperty(name = "Resolution", default = "100x100")
+
+    width_per_height = 1.0
+    invoked = False
+
+    @classmethod
+    def poll(self, context):
+        return context.object and context.object.type == 'MESH'
+
+    def execute(self, context):
+        obj = context.object
+        if len(obj.data.vertices) != 4 and len(obj.data.polygons) != 1:
+            self.report({'ERROR'}, "Only works for single-quad mesh.")
+            return {'CANCELLED'}
+
+        res = get_image_resolution(self.resolution, self.width_per_height)
+        if not res:
+            self.report({'ERROR'}, "Invalid resolution specification.")
+            return {'CANCELLED'}
+        width, height = res
+
+        if not obj.data.uv_textures.active:
+            prev_mode = obj.mode            
+            bpy.ops.object.mode_set(mode = 'EDIT')
+            obj.data.uv_textures.new()
+            bpy.ops.object.mode_set(mode = prev_mode)
+
+        filepath = bpy.path.abspath(self.filepath)
+        if not self.create_image(filepath, width, height):
+            return {'CANCELLED'}
+
+        image = bpy.data.images.load(filepath)
+        mat = create_texture_material(obj, image, self.transparent)
         obj.data.materials.clear()
         obj.data.materials.append(mat)
 
         return {'FINISHED'}
 
     def invoke(self, context, event):
+        obj = context.object
+
+        bound_box = [[v for v in b] for b in obj.bound_box]
+        mesh_width = round(abs(bound_box[0][0]) + abs(bound_box[4][0]), 5)
+        mesh_height = round(abs(bound_box[0][1]) + abs(bound_box[2][1]), 5)
+        self.width_per_height = round(mesh_width / float(mesh_height), 3)\
+            if mesh_height > 0 \
+            else 0
+
+        self.filepath = "//%s%s.png" % (PRJ_IMG_PREFIX, obj.name)
+        self.resolution = "%dx%d" % (1024 * self.width_per_height, 1024)
+
         retval = context.window_manager.invoke_props_dialog(self)
         self.invoked = True
         return retval
