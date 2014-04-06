@@ -433,6 +433,21 @@ class MESH_OT_adh_project_background_image_to_mesh(Operator):
         self.invoked = True
         return retval
 
+class CreateImageMixin:
+    transparent = BoolProperty(name = "Transparent", default = False)
+    
+    def create_image(self, filepath, width, height):
+        fileinfo = {'f':filepath, 'w':width, 'h':height,
+                    'a': "transparent" if self.transparent else 'opaque'}
+        status, output_str = subprocess.getstatusoutput(
+            "convert -size '%(w)sx%(h)s' xc:white -alpha %(a)s \"%(f)s\""
+            % fileinfo)
+        if status == 0:
+            self.report({'INFO'}, '"%s" created' % filepath)
+        else:
+            self.report({'ERROR'}, output_str)
+        return (status == 0)
+
         obj.data.materials.clear()
         obj.data.materials.append(mat)
 
@@ -513,6 +528,23 @@ class VIEW3D_OT_adh_background_image_from_scene(Operator):
         self.invoked = True
         return retval
 
+def create_image_strip(context, filepath):
+    scene = context.scene
+    strip_duration = 50
+    topmost_channel = 1
+    scene.sequence_editor_create()
+    sequences = scene.sequence_editor.sequences
+    if scene.sequence_editor:
+        frame_current = scene.frame_current
+        topmost_channel = get_topmost_channel(
+            sequences, frame_current, frame_current + strip_duration)
+    image_strip = sequences.new_image(
+        os.path.basename(filepath), filepath,
+        topmost_channel + 1, scene.frame_current)
+    image_strip.blend_type = 'ALPHA_OVER'
+    image_strip.frame_final_duration = strip_duration
+    image_strip.mute = True # Unmute manually after edit = reload image
+
 class SEQUENCER_OT_adh_add_annotation_image_strip(Operator):
     bl_idname = 'sequencer.adh_add_annotation_image_strip'
     bl_label = 'Add Annotation Image Strip'
@@ -553,23 +585,9 @@ class SEQUENCER_OT_adh_add_annotation_image_strip(Operator):
             self.report({'ERROR'}, "Render output file doesn't exist.")
             return {'CANCELLED'}
 
-        scene = context.scene
-        strip_duration = 50
-        topmost_channel = 1
-        scene.sequence_editor_create()
-        sequences = scene.sequence_editor.sequences
-        if scene.sequence_editor:
-            frame_current = scene.frame_current
-            topmost_channel = get_topmost_channel(
-                sequences, frame_current, frame_current + strip_duration)
-        image_strip = sequences.new_image(
-            os.path.basename(self.filepath), self.filepath,
-            topmost_channel + 1, scene.frame_current)
-        image_strip.blend_type = 'ALPHA_OVER'
-        image_strip.frame_final_duration = strip_duration
-        image_strip.mute = True # Unmute manually after edit = reload image
-
-        edit_image_file(context, self.filepath, self.external_editor)
+        filepath = bpy.path.abspath(self.filepath)
+        create_image_strip(context, self.filepath)
+        edit_image_file(context, filepath, self.external_editor)
         
         return {'FINISHED'}
 
