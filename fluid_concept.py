@@ -56,6 +56,32 @@ XCFINFO_OUTPUT_RE = re.compile(r"""
 (?P<layer_mode>\S+)\s
 (?P<layer_name>.+)$""", re.VERBOSE)
 
+def create_texture_material(obj, image, is_transparent = False):
+    uvmap = obj.data.uv_textures.active
+    uvmap.name = PRJ_UVMAP_PREFIX + image.name
+    for uvmap_poly in uvmap.data:
+        uvmap_poly.image = image
+
+    mat_name = PRJ_MAT_PREFIX + obj.name
+    mat = bpy.data.materials.get(mat_name, None)
+    if not mat:
+        mat = bpy.data.materials.new(mat_name)
+    mat.game_settings.alpha_blend = 'ALPHA' if is_transparent else 'OPAQUE'
+    mat.use_shadeless = True
+
+    tex_name = mat_name
+    tex = bpy.data.textures.get(tex_name, None)
+    if not tex:
+        tex = bpy.data.textures.new(tex_name, 'IMAGE')
+    tex.image = image
+
+    texslot = mat.texture_slots.create(0)
+    texslot.texture_coords = 'UV'
+    texslot.uv_layer = uvmap.name
+    texslot.texture = tex
+
+    return mat
+
 def edit_image_file(context, filepath, external_editor = True):
     image_editor = context.user_preferences.filepaths.image_editor
     if image_editor and external_editor:
@@ -396,28 +422,16 @@ class MESH_OT_adh_project_background_image_to_mesh(Operator):
         space.region_3d.view_perspective = prev_perspective
         scene.camera = prev_camera
 
-        uvmap = obj.data.uv_textures.active
-        uvmap.name = PRJ_UVMAP_PREFIX + scene.camera.name
-        for uvmap_poly in uvmap.data:
-            uvmap_poly.image = image
+        mat = create_texture_material(obj, image, True)
+        obj.data.materials.clear()
+        obj.data.materials.append(mat)
 
-        mat_name = PRJ_MAT_PREFIX + obj.name
-        mat = bpy.data.materials.get(mat_name, None)
-        if not mat:
-            mat = bpy.data.materials.new(mat_name)
-        mat.game_settings.alpha_blend = 'ALPHA'
-        mat.use_shadeless = True
+        return {'FINISHED'}
 
-        tex_name = PRJ_TEX_PREFIX + obj.name
-        tex = bpy.data.textures.get(tex_name, None)
-        if not tex:
-            tex = bpy.data.textures.new(tex_name, 'IMAGE')
-        tex.image = image
-
-        texslot = mat.texture_slots.create(0)
-        texslot.texture_coords = 'UV'
-        texslot.uv_layer = uvmap.name
-        texslot.texture = tex
+    def invoke(self, context, event):
+        retval = context.window_manager.invoke_props_dialog(self)
+        self.invoked = True
+        return retval
 
         obj.data.materials.clear()
         obj.data.materials.append(mat)
