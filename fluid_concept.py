@@ -619,6 +619,56 @@ def create_image_strip(context, filepath):
     image_strip.frame_final_duration = strip_duration
     image_strip.mute = True # Unmute manually after edit = reload image
 
+class SEQUENCER_OT_adh_add_blank_image_strip(Operator, CreateImageMixin):
+    bl_idname = 'sequencer.adh_add_blank_image_strip'
+    bl_label = 'Add Blank Image Strip'
+    bl_options = {'REGISTER', 'UNDO'}
+
+    filepath = StringProperty(subtype = 'FILE_PATH', default = "//frame.png")
+    external_editor = BoolProperty(default = True)
+    invoked = False
+
+    @classmethod
+    def poll(self, context):
+        return context.space_data.type == 'SEQUENCE_EDITOR'
+
+    def draw(self, context):
+        layout = self.layout
+        if self.invoked:
+            return
+
+        row = layout.row()
+        row.label('File Path:') ; row.prop(self, 'filepath', text='')
+        row = layout.row()
+        row.label('Transparent:')
+        row.prop(self, 'transparent', text=' ')
+        row = layout.row()
+        row.label('Use External Editor:')
+        row.prop(self, 'external_editor', text=' ')
+
+    def execute(self, context):
+        render_settings = context.scene.render
+        width = render_settings.resolution_x
+        height = render_settings.resolution_y
+
+        filepath = bpy.path.abspath(self.filepath)
+        self.create_image(filepath, width, height)
+        create_image_strip(context, self.filepath)
+        edit_image_file(context, filepath, self.external_editor)
+
+        return {'FINISHED'}
+
+    def invoke(self, context, event):
+        props = context.scene.adh_fluid_concept
+        if props.new_strip_image_filepath:
+            self.filepath = props.new_strip_image_filepath
+        else:            
+            self.filepath = '//frame_%04d.png' % (context.scene.frame_current)
+
+        retval = context.window_manager.invoke_props_dialog(self)
+        self.invoked = True
+        return retval
+
 class SEQUENCER_OT_adh_add_annotation_image_strip(Operator):
     bl_idname = 'sequencer.adh_add_annotation_image_strip'
     bl_label = 'Add Annotation Image Strip'
@@ -1150,7 +1200,10 @@ class SEQUENCER_PT_fluid_concept(Panel):
         props = context.scene.adh_fluid_concept
 
         layout.prop(props, "new_strip_image_filepath", text = "")
-        layout.operator("sequencer.adh_add_annotation_image_strip")
+
+        col = layout.column(align = True)
+        col.operator("sequencer.adh_add_blank_image_strip")
+        col.operator("sequencer.adh_add_annotation_image_strip")
 
         col = layout.column(align = True)
         col.operator("image.adh_external_edit_master",
