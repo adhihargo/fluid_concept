@@ -60,6 +60,202 @@ IMAGE_RESOLUTION_RE = re.compile(r"""
 \s*x\s*
 (?P<height>\d*)\s*$""", re.VERBOSE)
 
+
+
+class CreateCurveMixin:
+    main_axis = EnumProperty(
+        name = "Deformation Axis",
+        items = [('px', '+X', "+X"), ('py', '+Y', "+Y"), ('pz', '+Z', "+Z"),
+                 ('nx', '-X', "-X"), ('ny', '-Y', "-Y"), ('nz', '-Z', "-Z")],
+        default = 'py')
+
+    handle_type = EnumProperty(
+        name = "Handle Type",
+        description = "Curve handle type: Free or Aligned",
+        items = [('FREE', 'Free', 'Handles free from each other'),
+                 ('ALIGNED', 'Aligned', 'Handles aligned to each other')],
+        default = 'FREE')
+
+    curve_size = FloatProperty(
+        name = "Curve Size",
+        default = 2.0)
+
+    orient_object = BoolProperty(
+        name = "Use Object Matrix",
+        description = "Copy object's location, rotation and scale to curve.",
+        default = True
+        )
+
+    def draw(self, context):
+        layout = self.layout
+
+        column = layout.column(align = True)
+        row = column.row(align = True)
+        row.prop_enum(self, "main_axis", 'px')
+        row.prop_enum(self, "main_axis", 'py')
+        row.prop_enum(self, "main_axis", 'pz')
+        row = column.row(align = True)
+        row.prop_enum(self, "main_axis", 'nx')
+        row.prop_enum(self, "main_axis", 'ny')
+        row.prop_enum(self, "main_axis", 'nz')
+
+        row = layout.row(align = True)
+        row.prop(self, "orient_object")
+
+        column = layout.column(align = True)
+        row = column.row(align = True)
+        row.prop(self, "curve_size")
+        row = column.row(align = True)
+        row.prop_enum(self, "handle_type", 'FREE')
+        row.prop_enum(self, "handle_type", 'ALIGNED')
+
+    def create_curve(self, context, obj):
+        scene = context.scene
+
+        axis = ord(self.main_axis[1]) - ord('x')
+        curve_name = "CURVE_" + obj.name
+        curve_data = bpy.data.curves.new(curve_name, 'CURVE')
+        curve_data.dimensions = '3D'
+
+        sign = -1 if self.main_axis[0] == 'n' else 1
+        spline = curve_data.splines.new('BEZIER')
+        spline.bezier_points.add()
+        p1, p2 = spline.bezier_points[0], spline.bezier_points[1]
+        p1.handle_left[axis] = -0.25 * sign * self.curve_size
+        p1.handle_right[axis] = 0.25 * sign * self.curve_size
+        p2.co[axis] = 1.5 * sign * self.curve_size
+        p2.handle_left[axis] = 1.25 * sign * self.curve_size
+        p2.handle_right[axis] = 1.75 * sign * self.curve_size
+        p1.handle_left_type = self.handle_type
+        p1.handle_right_type = self.handle_type
+        p2.handle_left_type = self.handle_type
+        p2.handle_right_type = self.handle_type
+        if "deform" in self.__class__.__name__:
+            if sign == 1 and axis > 0:
+                p1.tilt = p2.tilt = math.radians(90.0 * axis)
+            elif sign == -1:
+                p1.tilt = p2.tilt = math.radians(-90.0 * (2 if axis == 1 else 1))
+        elif self.main_axis == 'pz':
+            p1.tilt = p2.tilt = math.radians(90.0 * axis)
+
+        curve = bpy.data.objects.new(curve_name, curve_data)
+        if self.orient_object:
+            curve.matrix_world = obj.matrix_world
+        else:
+            curve.location = obj.location
+        scene.objects.link(curve)
+
+        return curve
+
+class OBJECT_OT_adh_create_follow_curve(Operator, CreateCurveMixin):
+    bl_idname = 'object.adh_create_follow_curve'
+    bl_label = 'Create Follow Curve'
+    bl_options = {'REGISTER', 'UNDO'}
+
+    @classmethod
+    def poll(self, context):
+        return context.object != None
+
+    def draw(self, context):
+        super().draw(context)
+
+    def execute(self, context):
+        for obj in context.selected_objects:
+            for con in obj.constraints:
+                if con.type == "FOLLOW_PATH" and con.target != None:
+                    continue
+            self.process_object(context, obj)
+
+        return {"FINISHED"}
+
+    def process_object(self, context, obj):
+        scene = context.scene
+        curve = self.create_curve(context, obj)
+
+        axis = ord(self.main_axis[1]) - ord('x')
+        con = None
+        for c in obj.constraints:
+            if c.type == "FOLLOW_PATH":
+                con = c
+                break
+        else:
+            con = obj.constraints.new("FOLLOW_PATH")
+        con.name = curve.name
+        con.target = curve
+        con.use_curve_follow = True
+        con.forward_axis = dict(
+            px = 'FORWARD_X', py = 'FORWARD_Y', pz = 'FORWARD_Z',
+            nx = 'TRACK_NEGATIVE_X', ny = 'TRACK_NEGATIVE_Y',
+            nz = 'TRACK_NEGATIVE_Z'
+            )[self.main_axis]
+        con.up_axis = ('UP_Z', 'UP_Z', 'UP_Y',
+                       'UP_Z', 'UP_Z', 'UP_Y')[axis]
+        obj.matrix_basis.identity()
+
+        curve.data.animation_data_create()
+        action_name = curve.name
+        action = bpy.data.actions.get(action_name, None)
+        if not action:
+            action = bpy.data.actions.new(action_name)
+        fcurve = action.fcurves.get("eval_time", None)
+        if not fcurve:
+            fcurve = action.fcurves.new("eval_time", index = -1)
+        fcurve.modifiers.new("GENERATOR")
+        curve.data.animation_data.action = action
+
+        if obj.parent:
+            curve.parent = obj.parent
+
+        obj.select = False
+        curve.select = True
+        scene.objects.active = curve
+
+class OBJECT_OT_adh_create_deform_curve(Operator, CreateCurveMixin):
+    bl_idname = 'object.adh_create_deform_curve'
+    bl_label = 'Create Deform Curve'
+    bl_options = {'REGISTER', 'UNDO'}
+
+    @classmethod
+    def poll(self, context):
+        return context.object != None
+
+    def draw(self, context):
+        super().draw(context)
+
+    def execute(self, context):
+        self.process_object(context, context.active_object)
+        for obj in context.selected_objects:
+            if obj == context.active_object:
+                continue
+            for mod in obj.modifiers:
+                if mod.type == "CURVE" and mod.object != None:
+                    continue
+            self.process_object(context, obj)
+
+        return {'FINISHED'}
+
+    def process_object(self, context, obj):
+        scene = context.scene
+        curve = self.create_curve(context, obj)
+
+        mod = None
+        for m in obj.modifiers:
+            if m.type == "CURVE":
+                mod = m
+                break
+        else:
+            mod = obj.modifiers.new(curve.name, "CURVE")
+        mod.object = curve
+        mod.deform_axis = dict(px = 'POS_X', py = 'POS_Y', pz = 'POS_Z',
+                               nx = 'NEG_X', ny = 'NEG_Y', nz = 'NEG_Z'
+                               )[self.main_axis]
+
+        obj.select = False
+        curve.select = True
+        scene.objects.active = curve
+
+
+
 def create_texture_material(obj, image, is_transparent = False):
     uvmap = obj.data.uv_textures.active
     uvmap.name = PRJ_UVMAP_PREFIX + image.name
