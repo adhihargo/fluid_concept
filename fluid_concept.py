@@ -1359,6 +1359,33 @@ class ADH_FluidConceptProps(bpy.types.PropertyGroup):
         subtype = "DIR_PATH",
         default = "//")
 
+def draw_view3d_playback_header(self, context):
+    layout = self.layout
+    scene = context.scene
+    screen = context.screen
+
+    # Copy-pasted from scripts/startup/bl_ui/space_time.py
+    row = layout.row(align=True)
+    row.operator("screen.frame_jump", text="", icon='REW').end = False
+    row.operator("screen.keyframe_jump", text="", icon='PREV_KEYFRAME').next = False
+    if not screen.is_animation_playing:
+        # if using JACK and A/V sync:
+        #   hide the play-reversed button
+        #   since JACK transport doesn't support reversed playback
+        if scene.sync_mode == 'AUDIO_SYNC' and context.user_preferences.system.audio_device == 'JACK':
+            sub = row.row(align=True)
+            sub.scale_x = 2.0
+            sub.operator("screen.animation_play", text="", icon='PLAY')
+        else:
+            row.operator("screen.animation_play", text="", icon='PLAY_REVERSE').reverse = True
+            row.operator("screen.animation_play", text="", icon='PLAY')
+    else:
+        sub = row.row(align=True)
+        sub.scale_x = 2.0
+        sub.operator("screen.animation_play", text="", icon='PAUSE')
+    row.operator("screen.keyframe_jump", text="", icon='NEXT_KEYFRAME').next = True
+    row.operator("screen.frame_jump", text="", icon='FF').end = True
+
 def draw_view3d_background_panel(self, context):
     layout = self.layout
 
@@ -1376,6 +1403,7 @@ def draw_sequencer_add_strip_menu(self, context):
                     text = "Annotation Image")
 
 def register():
+    bpy.types.VIEW3D_HT_header.append(draw_view3d_playback_header)
     bpy.types.VIEW3D_PT_background_image.prepend(draw_view3d_background_panel)
     bpy.types.SEQUENCER_MT_add.append(draw_sequencer_add_strip_menu)
     bpy.utils.register_module(__name__)
@@ -1384,6 +1412,7 @@ def register():
         (type = ADH_FluidConceptProps)
 
 def unregister():
+    bpy.types.VIEW3D_HT_header.remove(draw_view3d_playback_header)
     bpy.types.VIEW3D_PT_background_image.remove(draw_view3d_background_panel)
     bpy.types.SEQUENCER_MT_add.remove(draw_sequencer_add_strip_menu)
     bpy.utils.unregister_module(__name__)
