@@ -715,6 +715,25 @@ class VIEW3D_OT_adh_background_image_from_scene(Operator):
         self.invoked = True
         return retval
 
+class SCREEN_OT_adh_change_scene(Operator):
+    bl_idname = 'screen.adh_change_scene'
+    bl_label = 'Change Scene'
+    bl_options = {'REGISTER', 'UNDO'}
+
+    reverse = BoolProperty(name="Reverse", default=False)
+
+    def execute(self, context):
+        scene_count = len(bpy.data.scenes)
+        if scene_count > 1:
+            scene_index = bpy.data.scenes.find(context.scene.name)
+            new_scene_index = scene_index + (-1 if self.reverse else 1)
+            new_scene_index %= scene_count
+            new_scene = bpy.data.scenes[new_scene_index]
+
+            context.screen.scene = new_scene
+
+        return {'FINISHED'}
+
 def create_image_strip(context, filepath):
     scene = context.scene
     strip_duration = 50
