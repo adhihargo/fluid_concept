@@ -1387,15 +1387,30 @@ class VIEW3D_PT_fluid_concept(Panel):
     def draw(self, context):
         layout = self.layout
 
+
+        layout.label("View Manager:")
+
         col = layout.column(align = True)
-        col.label("Background Images:")
+        col.operator('view3d.adh_save_view_matrix')
+        col.operator('view3d.adh_load_view_matrix')
+
+        col = layout.column(align = True)
+        col.operator('object.adh_align_to_view')
+        col.operator('object.adh_align_to_active')
+
+
+        layout.label("Background Images:")
+
+        col = layout.column(align = True)
         col.operator('view3d.adh_background_image_from_scene',
                      text = "Add From Scene")
         col.operator('mesh.adh_project_background_image_to_mesh',
                      text = "Project to Mesh")
         
+
+        layout.label("Mesh Image:")
+
         col = layout.column(align = True)
-        col.label("Mesh Image:")
         col.operator("image.adh_external_edit_master",
                      text = "Edit Externally")
         col.operator("image.adh_reload_from_master_file",
