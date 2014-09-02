@@ -1006,7 +1006,7 @@ class SEQUENCER_OT_adh_align_strips(Operator):
 
         return self.execute(context)
 
-class ImageMixin:
+class EditImageMixin:
     image = None
     filepath = None
     master_filepath = None
@@ -1034,7 +1034,7 @@ class ImageMixin:
         if self.filepath:
             self.master_filepath = get_master_file(self.filepath)
 
-class IMAGE_OT_adh_external_edit_master(Operator, ImageMixin):
+class IMAGE_OT_adh_external_edit_master(Operator, EditImageMixin):
     bl_idname = 'image.adh_external_edit_master'
     bl_label = 'Master Image Edit Externally'
     bl_options = {'REGISTER', 'UNDO'}
@@ -1048,7 +1048,7 @@ class IMAGE_OT_adh_external_edit_master(Operator, ImageMixin):
         edit_image_file(context, self.master_filepath)
         return {'FINISHED'}
 
-class IMAGE_OT_adh_reload_from_master_file(Operator, ImageMixin):
+class IMAGE_OT_adh_reload_from_master_file(Operator, EditImageMixin):
     bl_idname = 'image.adh_reload_from_master_file'
     bl_label = 'Reload From Master File'
     bl_options = {'REGISTER', 'UNDO'}
@@ -1074,7 +1074,7 @@ class IMAGE_OT_adh_reload_from_master_file(Operator, ImageMixin):
         context.area.tag_redraw()
         return {'FINISHED'}
 
-class IMAGE_OT_adh_create_scaled_copy(Operator, ImageMixin):
+class IMAGE_OT_adh_create_scaled_copy(Operator, EditImageMixin):
     bl_idname = 'image.adh_create_scaled_copy'
     bl_label = 'Create Scaled Down Image Copy'
     bl_options = {'REGISTER', 'UNDO'}
