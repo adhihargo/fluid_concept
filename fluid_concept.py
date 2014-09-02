@@ -148,6 +148,7 @@ class CreateCurveMixin:
         return curve
 
 class OBJECT_OT_adh_create_follow_curve(Operator, CreateCurveMixin):
+    """Create a new curve and a Follow Path constraint targeting it, for each selected object."""
     bl_idname = 'object.adh_create_follow_curve'
     bl_label = 'Create Follow Curve'
     bl_options = {'REGISTER', 'UNDO'}
@@ -211,6 +212,7 @@ class OBJECT_OT_adh_create_follow_curve(Operator, CreateCurveMixin):
         scene.objects.active = curve
 
 class OBJECT_OT_adh_create_deform_curve(Operator, CreateCurveMixin):
+    """Create a new curve and a Curve Deform modifier targeting it, for each selected object."""
     bl_idname = 'object.adh_create_deform_curve'
     bl_label = 'Create Deform Curve'
     bl_options = {'REGISTER', 'UNDO'}
@@ -646,6 +648,7 @@ def get_image_resolution(res_str, width_per_height):
 
 
 class VIEW3D_OT_adh_background_image_from_scene(Operator):
+    """Render selected scene, sets the result as background image of current scene."""
     bl_idname = 'view3d.adh_background_image_from_scene'
     bl_label = 'Add Background Image from Scene'
     bl_options = {'REGISTER', 'UNDO'}
@@ -716,6 +719,7 @@ class VIEW3D_OT_adh_background_image_from_scene(Operator):
         return retval
 
 class SCREEN_OT_adh_change_scene(Operator):
+    """Change active scene of current screen, loops over scene list."""
     bl_idname = 'screen.adh_change_scene'
     bl_label = 'Change Scene'
     bl_options = {'REGISTER', 'UNDO'}
@@ -752,6 +756,7 @@ def create_image_strip(context, filepath):
     image_strip.mute = True # Unmute manually after edit = reload image
 
 class SEQUENCER_OT_adh_add_blank_image_strip(Operator, CreateImageMixin):
+    """Create a new blank image file, with its corresponding image sequence strip."""
     bl_idname = 'sequencer.adh_add_blank_image_strip'
     bl_label = 'Add Blank Image Strip'
     bl_options = {'REGISTER', 'UNDO'}
@@ -802,6 +807,7 @@ class SEQUENCER_OT_adh_add_blank_image_strip(Operator, CreateImageMixin):
         return retval
 
 class SEQUENCER_OT_adh_add_annotation_image_strip(Operator):
+    """Render current frame to a new image file, with its corresponding image sequence strip."""
     bl_idname = 'sequencer.adh_add_annotation_image_strip'
     bl_label = 'Add Annotation Image Strip'
     bl_options = {'REGISTER', 'UNDO'}
@@ -859,6 +865,7 @@ class SEQUENCER_OT_adh_add_annotation_image_strip(Operator):
         return retval
 
 class SEQUENCER_OT_adh_fade_in_out_selected_strips(Operator):
+    """Animate selected strips' alpha or volume value."""
     bl_idname = 'sequencer.adh_fade_in_out_selected_strips'
     bl_label = 'Fade In/Out Selected Strips'
     bl_options = {'REGISTER', 'UNDO'}
