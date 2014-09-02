@@ -360,6 +360,46 @@ class MESH_OT_adh_create_card_image(Operator, CreateImageMixin):
 
 
 
+class VIEW3D_OT_adh_save_view_matrix(Operator):
+    bl_idname = 'view3d.adh_save_view_matrix'
+    bl_label = 'Save View Matrix'
+    bl_options = {'REGISTER', 'UNDO'}
+
+    @classmethod
+    def poll(self, context):
+        return context.space_data.type == "VIEW_3D"
+
+    def execute(self, context):
+        scene = context.scene
+        props = scene.adh_fluid_concept
+        mat = context.space_data.region_3d.view_matrix.copy()
+        if props.view_matrices:
+            props.view_matrices[0] = mat
+        else:
+            props.view_matrices.append(mat)
+
+        print(props.view_matrices)
+        return {"FINISHED"}
+
+class VIEW3D_OT_adh_load_view_matrix(Operator):
+    bl_idname = 'view3d.adh_load_view_matrix'
+    bl_label = 'Load View Matrix'
+    bl_options = {'REGISTER', 'UNDO'}
+
+    @classmethod
+    def poll(self, context):
+        return context.space_data.type == "VIEW_3D"
+
+    def execute(self, context):
+        scene = context.scene
+        props = scene.adh_fluid_concept
+        if props.view_matrices:
+            context.space_data.region_3d.view_matrix = props.view_matrices[0]
+
+        return {"FINISHED"}
+
+
+
 class OBJECT_OT_adh_copy_action(Operator):
     bl_idname = 'object.adh_copy_action'
     bl_label = 'Copy All Actions'
@@ -1389,6 +1429,8 @@ class ADH_FluidConceptProps(bpy.types.PropertyGroup):
         name = "Render Passes Base Path",
         subtype = "DIR_PATH",
         default = "//")
+
+    view_matrices = []
 
 def draw_view3d_playback_header(self, context):
     layout = self.layout
