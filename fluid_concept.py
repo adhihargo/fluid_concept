@@ -258,6 +258,24 @@ class OBJECT_OT_adh_create_deform_curve(Operator, CreateCurveMixin):
 
 
 
+def get_image_resolution(res_str, width_per_height):
+    match = IMAGE_RESOLUTION_RE.match(res_str)
+    if not match:
+        return None
+
+    res = None
+    width = int(match.group('width')) if match.group('width') else 0
+    height = int(match.group('height')) if match.group('height') else 0
+    if (width + height) != 0:
+        if width == 0:
+            width = int(height * width_per_height)
+        elif height == 0:
+            height = int(width / width_per_height)
+        if (width + height) != 0:
+            res = (width, height)
+
+    return res
+
 class CreateImageMixin:
     transparent = BoolProperty(name = "Transparent", default = True)
 
@@ -339,6 +357,64 @@ class MESH_OT_adh_create_card_image(Operator, CreateImageMixin):
         retval = context.window_manager.invoke_props_dialog(self)
         self.invoked = True
         return retval
+
+
+
+class OBJECT_OT_adh_copy_action(Operator):
+    bl_idname = 'object.adh_copy_action'
+    bl_label = 'Copy All Actions'
+    bl_options = {'REGISTER', 'UNDO'}
+
+    offset_frame = IntProperty(name = "Offset", subtype = "TIME")
+
+    @classmethod
+    def poll(self, context):
+        return context.active_object
+
+    def execute(self, context):
+        obj = context.active_object
+        other_objs = sorted(
+            [o for o in context.selected_objects if o != obj],
+            key = lambda o: ((o.location + o.delta_location) -
+                             (obj.location + obj.delta_location)).length)
+        actions = {}
+
+        for owner, key in [(obj, "object"), (obj.data, "data")]:
+            if owner.animation_data and owner.animation_data.action:
+                actions[key] = owner.animation_data.action
+
+        offset = self.offset_frame
+        for o in other_objs:
+            key = "location"
+            delta = ((getattr(o, key) + getattr(o, "delta_"+key)) -
+                     (getattr(obj, key) + getattr(obj, "delta_"+key)))
+            setattr(o, "delta_"+key, delta)
+
+            for owner, key in [(o, "object"), (o.data, "data")]:
+                if not actions.get(key, None):
+                    continue
+                owner.animation_data_create()
+                owner.animation_data.action = None
+
+                action_name = actions[key].name + "_copy_" + o.name
+                action = bpy.data.actions.get(action_name, None)
+                if action:
+                    bpy.data.actions.remove(action)
+                action = actions[key].copy()
+                action.name = action_name
+                owner.animation_data.action = action
+
+                fcurves = action.fcurves
+                for curve in fcurves:
+                    keyframePoints = curve.keyframe_points
+                    for keyframe in keyframePoints:
+                        keyframe.co[0] += offset
+                        keyframe.handle_left[0] += offset
+                        keyframe.handle_right[0] += offset
+
+            offset += self.offset_frame
+
+        return {'FINISHED'}
 
 
 
@@ -439,15 +515,6 @@ def get_scene_enums(self, context):
                       "There is no other scene to choose from."))
     return enums
 
-def get_topmost_channel(sequences, frame_min, frame_max):
-    frame_range = range(frame_min, frame_max)
-    sequences_in_range = list(filter(lambda s:\
-                                         s.frame_final_start in frame_range or\
-                                         s.frame_final_end in frame_range,
-                                     sequences))
-    return max(map(lambda s: s.channel, sequences_in_range))\
-        if sequences_in_range else 1
-
 def get_uvmap_image(uvmap):
     image = None
     for uvmap_poly in uvmap.data:
@@ -456,21 +523,6 @@ def get_uvmap_image(uvmap):
             break
 
     return image
-
-def get_fcurve(action, sequence):
-    channel = 'volume' if sequence.type == 'SOUND' else 'blend_alpha'
-    data_path = 'sequence_editor.sequences_all["%s"].%s' % (
-        sequence.name, channel)
-
-    fcurve = None
-    for f in action.fcurves:
-        if f.data_path == data_path:
-            fcurve = f
-            break
-    if not fcurve:
-        fcurve = action.fcurves.new(data_path)
-
-    return fcurve
 
 def render_image(context, filepath, scale = 100, scene = None, opengl = False):
     prev = {}
@@ -507,61 +559,6 @@ def render_image(context, filepath, scale = 100, scene = None, opengl = False):
     if context.space_data.type == 'VIEW_3D':
         context.space_data.region_3d.view_perspective = prev['view_persp']
 
-class OBJECT_OT_adh_copy_action(Operator):
-    bl_idname = 'object.adh_copy_action'
-    bl_label = 'Copy All Actions'
-    bl_options = {'REGISTER', 'UNDO'}
-
-    offset_frame = IntProperty(name = "Offset", subtype = "TIME")
-
-    @classmethod
-    def poll(self, context):
-        return context.active_object
-
-    def execute(self, context):
-        obj = context.active_object
-        other_objs = sorted(
-            [o for o in context.selected_objects if o != obj],
-            key = lambda o: ((o.location + o.delta_location) -
-                             (obj.location + obj.delta_location)).length)
-        actions = {}
-
-        for owner, key in [(obj, "object"), (obj.data, "data")]:
-            if owner.animation_data and owner.animation_data.action:
-                actions[key] = owner.animation_data.action
-
-        offset = self.offset_frame
-        for o in other_objs:
-            key = "location"
-            delta = ((getattr(o, key) + getattr(o, "delta_"+key)) -
-                     (getattr(obj, key) + getattr(obj, "delta_"+key)))
-            setattr(o, "delta_"+key, delta)
-
-            for owner, key in [(o, "object"), (o.data, "data")]:
-                if not actions.get(key, None):
-                    continue
-                owner.animation_data_create()
-                owner.animation_data.action = None
-
-                action_name = actions[key].name + "_copy_" + o.name
-                action = bpy.data.actions.get(action_name, None)
-                if action:
-                    bpy.data.actions.remove(action)
-                action = actions[key].copy()
-                action.name = action_name
-                owner.animation_data.action = action
-
-                fcurves = action.fcurves
-                for curve in fcurves:
-                    keyframePoints = curve.keyframe_points
-                    for keyframe in keyframePoints:
-                        keyframe.co[0] += offset
-                        keyframe.handle_left[0] += offset
-                        keyframe.handle_right[0] += offset
-
-            offset += self.offset_frame
-
-        return {'FINISHED'}
 
 
 
@@ -626,24 +623,6 @@ class MESH_OT_adh_project_background_image_to_mesh(Operator):
         retval = context.window_manager.invoke_props_dialog(self)
         self.invoked = True
         return retval
-
-def get_image_resolution(res_str, width_per_height):
-    match = IMAGE_RESOLUTION_RE.match(res_str)
-    if not match:
-        return None
-
-    res = None
-    width = int(match.group('width')) if match.group('width') else 0
-    height = int(match.group('height')) if match.group('height') else 0
-    if (width + height) != 0:
-        if width == 0:
-            width = int(height * width_per_height)
-        elif height == 0:
-            height = int(width / width_per_height)
-        if (width + height) != 0:
-            res = (width, height)
-
-    return res
 
 
 
@@ -737,6 +716,32 @@ class SCREEN_OT_adh_change_scene(Operator):
             context.screen.scene = new_scene
 
         return {'FINISHED'}
+
+
+
+def get_topmost_channel(sequences, frame_min, frame_max):
+    frame_range = range(frame_min, frame_max)
+    sequences_in_range = list(filter(lambda s:\
+                                         s.frame_final_start in frame_range or\
+                                         s.frame_final_end in frame_range,
+                                     sequences))
+    return max(map(lambda s: s.channel, sequences_in_range))\
+        if sequences_in_range else 1
+
+def get_fcurve(action, sequence):
+    channel = 'volume' if sequence.type == 'SOUND' else 'blend_alpha'
+    data_path = 'sequence_editor.sequences_all["%s"].%s' % (
+        sequence.name, channel)
+
+    fcurve = None
+    for f in action.fcurves:
+        if f.data_path == data_path:
+            fcurve = f
+            break
+    if not fcurve:
+        fcurve = action.fcurves.new(data_path)
+
+    return fcurve
 
 def create_image_strip(context, filepath):
     scene = context.scene
