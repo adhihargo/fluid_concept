@@ -400,6 +400,52 @@ class VIEW3D_OT_adh_load_view_matrix(Operator):
 
 
 
+class OBJECT_OT_adh_align_to_active(Operator):
+    """Align all selected objects to active object."""
+    bl_idname = 'object.adh_align_to_active'
+    bl_label = 'Align Object to Active'
+    bl_options = {'REGISTER', 'UNDO'}
+
+    @classmethod
+    def poll(self, context):
+        return context.selected_objects
+
+    def execute(self, context):
+        active_object = context.active_object
+        quat1 = active_object.matrix_world.to_quaternion()
+
+        for obj in context.selected_objects:
+            if obj == active_object:
+                continue
+
+            quat2 = obj.matrix_world.to_quaternion()
+            quat_diff = quat2.rotation_difference(quat1)
+            obj.matrix_world *= quat_diff.to_matrix().to_4x4()
+
+        return {"FINISHED"}
+
+class OBJECT_OT_adh_align_to_view(Operator):
+    """Align all selected objects to current view angle."""
+    bl_idname = 'object.adh_align_to_view'
+    bl_label = 'Align Object to View'
+    bl_options = {'REGISTER', 'UNDO'}
+
+    @classmethod
+    def poll(self, context):
+        return context.selected_objects and context.space_data.type == 'VIEW_3D'
+
+    def execute(self, context):
+        quat1 = context.region_data.view_rotation
+
+        for obj in context.selected_objects:
+            quat2 = obj.matrix_world.to_quaternion()
+            quat_diff = quat2.rotation_difference(quat1)
+            obj.matrix_world *= quat_diff.to_matrix().to_4x4()
+
+        return {"FINISHED"}
+
+
+
 class OBJECT_OT_adh_copy_action(Operator):
     bl_idname = 'object.adh_copy_action'
     bl_label = 'Copy All Actions'
@@ -598,9 +644,6 @@ def render_image(context, filepath, scale = 100, scene = None, opengl = False):
     context.screen.scene = prev['scene']
     if context.space_data.type == 'VIEW_3D':
         context.space_data.region_3d.view_perspective = prev['view_persp']
-
-
-
 
 class MESH_OT_adh_project_background_image_to_mesh(Operator):
     bl_idname = 'mesh.adh_project_background_image_to_mesh'
@@ -1333,6 +1376,8 @@ class NODE_OT_adh_load_render_passes(Operator):
                 fi_node.image.source = 'FILE'
 
         return {'FINISHED'}    
+
+
 
 class VIEW3D_PT_fluid_concept(Panel):
     bl_label = "ADH Fluid Concept"
