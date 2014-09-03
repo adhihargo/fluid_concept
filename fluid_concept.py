@@ -24,7 +24,7 @@ import os
 import re
 import subprocess
 import tempfile
-from bpy.types import Operator, Menu, Panel
+from bpy.types import AddonPreferences, Operator, Menu, Panel
 from bpy.props import BoolProperty, FloatProperty, EnumProperty, IntProperty,\
     StringProperty, PointerProperty
 
@@ -885,10 +885,10 @@ class SEQUENCER_OT_adh_add_blank_image_strip(Operator, CreateImageMixin):
 
     def invoke(self, context, event):
         props = context.scene.adh_fluid_concept
-        if props.new_strip_image_filepath:
-            self.filepath = props.new_strip_image_filepath
-        else:            
-            self.filepath = '//frame_%04d.png' % (context.scene.frame_current)
+        if not props.new_strip_image_filepath:
+            props.new_strip_image_filepath = '//frame_%04d.png'
+        self.filepath = props.new_strip_image_filepath\
+            % (context.scene.frame_current)
 
         retval = context.window_manager.invoke_props_dialog(self)
         self.invoked = True
@@ -943,10 +943,10 @@ class SEQUENCER_OT_adh_add_annotation_image_strip(Operator):
 
     def invoke(self, context, event):
         props = context.scene.adh_fluid_concept
-        if props.new_strip_image_filepath:
-            self.filepath = props.new_strip_image_filepath
-        else:            
-            self.filepath = '//frame_%04d.png' % (context.scene.frame_current)
+        if not props.new_strip_image_filepath:
+            props.new_strip_image_filepath = '//frame_%04d.png'
+        self.filepath = props.new_strip_image_filepath\
+            % (context.scene.frame_current)
 
         retval = context.window_manager.invoke_props_dialog(self)
         self.invoked = True
@@ -1379,6 +1379,15 @@ class NODE_OT_adh_load_render_passes(Operator):
 
 
 
+class ADH_FluidConceptPreferences(AddonPreferences):
+    bl_idname = __name__
+
+    def draw(self, context):
+        layout = self.layout
+        props = context.scene.adh_fluid_concept
+
+        layout.prop(props, "new_strip_image_filepath")
+
 class VIEW3D_PT_fluid_concept(Panel):
     bl_label = "ADH Fluid Concept"
     bl_space_type = "VIEW_3D"
@@ -1482,8 +1491,10 @@ class NODE_PT_fluid_concept(Panel):
 
 class ADH_FluidConceptProps(bpy.types.PropertyGroup):
     new_strip_image_filepath = StringProperty(
-        name = "Image Filepath",
-        subtype = "FILE_PATH")
+        name = "Image File Name",
+        description = "Template name for new image files",
+        subtype = "FILE_PATH",
+        default = "//frame_%04d.png")
 
     renderpass_basepath = StringProperty(
         name = "Render Passes Base Path",
