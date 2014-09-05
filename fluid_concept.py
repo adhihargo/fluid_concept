@@ -279,7 +279,25 @@ def get_image_resolution(res_str, width_per_height):
 class CreateImageMixin:
     transparent = BoolProperty(name = "Transparent", default = True)
 
-    def create_image(self, filepath, width, height):
+    def create_image(self, context, filepath, width, height):
+        area = context.area
+        prev_area = area.type
+        area.type = "IMAGE_EDITOR"
+
+        bpy.ops.image.new(
+            name=filepath, width=width, height=height, color=(0, 0, 0, 0),
+            alpha=self.transparent, float=False)
+        image = context.space_data.image
+
+        bpy.ops.image.save_as(filepath=filepath)
+        context.space_data.image = None
+
+        area.type = prev_area
+        self.report({'INFO'}, '"%s" created' % filepath)
+
+        return image
+
+    def create_image_imagemagick(self, context, filepath, width, height):
         fileinfo = {'f':filepath, 'w':width, 'h':height,
                     'a': "transparent" if self.transparent else 'opaque'}
         status, output_str = subprocess.getstatusoutput(
@@ -290,7 +308,9 @@ class CreateImageMixin:
             self.report({'INFO'}, '"%s" created' % filepath)
         else:
             self.report({'ERROR'}, output_str)
-        return (status == 0)
+
+        image = bpy.data.images.load(filepath)
+        return image
 
 class MESH_OT_adh_create_card_image(Operator, CreateImageMixin):
     bl_idname = 'mesh.adh_create_card_image'
@@ -324,10 +344,10 @@ class MESH_OT_adh_create_card_image(Operator, CreateImageMixin):
             obj.data.uv_textures.new()
 
         filepath = bpy.path.abspath(self.filepath)
-        if not self.create_image(filepath, width, height):
+        image = self.create_image(context, filepath, width, height)
+        if not image:
             return {'CANCELLED'}
 
-        image = bpy.data.images.load(filepath)
         mat = create_texture_material(obj, image, self.transparent)
         obj.data.materials.clear()
         obj.data.materials.append(mat)
@@ -877,8 +897,11 @@ class SEQUENCER_OT_adh_add_blank_image_strip(Operator, CreateImageMixin):
         height = render_settings.resolution_y
 
         filepath = bpy.path.abspath(self.filepath)
-        self.create_image(filepath, width, height)
-        create_image_strip(context, self.filepath)
+        image = self.create_image(context, filepath, width, height)
+        if not image:
+            return {'CANCELLED'}
+
+        create_image_strip(context, image.filepath)
         edit_image_file(context, filepath, self.external_editor)
 
         return {'FINISHED'}
