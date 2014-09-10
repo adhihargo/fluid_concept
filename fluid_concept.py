@@ -297,20 +297,7 @@ class CreateImageMixin:
 
         return image
 
-    def create_image_imagemagick(self, context, filepath, width, height):
-        fileinfo = {'f':filepath, 'w':width, 'h':height,
-                    'a': "transparent" if self.transparent else 'opaque'}
-        status, output_str = subprocess.getstatusoutput(
-            ("convert -size '%(w)sx%(h)s' xc:white -alpha %(a)s  " +
-             "-type TrueColorMatte \"%(f)s\"")
-            % fileinfo)
-        if status == 0:
-            self.report({'INFO'}, '"%s" created' % filepath)
-        else:
-            self.report({'ERROR'}, output_str)
 
-        image = bpy.data.images.load(filepath)
-        return image
 
 class MESH_OT_adh_create_card_image(Operator, CreateImageMixin):
     bl_idname = 'mesh.adh_create_card_image'
