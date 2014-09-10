@@ -276,10 +276,10 @@ def get_image_resolution(res_str, width_per_height):
 
     return res
 
-class CreateImageMixin:
+class CreateImageFileMixin:
     transparent = BoolProperty(name = "Transparent", default = True)
 
-    def create_image(self, context, filepath, width, height):
+    def create_image_file(self, context, filepath, width, height):
         area = context.area
         prev_area = area.type
         area.type = "IMAGE_EDITOR"
@@ -293,13 +293,40 @@ class CreateImageMixin:
         context.space_data.image = None
 
         area.type = prev_area
-        self.report({'INFO'}, '"%s" created' % filepath)
 
         return image
 
+class CreateImageStripMixin:
+    filepath = StringProperty(subtype = 'FILE_PATH', default = "//frame.png")
+    external_editor = BoolProperty(default = True)
 
+    def check_image_path(self, context):
+        # For unsaved .blend file, convert relative path to
+        # absolute. Fixing problem in Windows.
+        if self.filepath.startswith("//") and not context.blend_data.is_saved:
+            self.report({'WARNING'}, "Blend file unsaved, image written "
+                        "to temporary directory.")
+            self.filepath = os.path.join(get_temp_dir(),
+                                         bpy.path.abspath(self.filepath))
 
-class MESH_OT_adh_create_card_image(Operator, CreateImageMixin):
+    def create_image_strip(self, context, filepath):
+        scene = context.scene
+        strip_duration = 50
+        topmost_channel = 1
+        scene.sequence_editor_create()
+        sequences = scene.sequence_editor.sequences
+        if scene.sequence_editor:
+            frame_current = scene.frame_current
+            topmost_channel = get_topmost_channel(
+                sequences, frame_current, frame_current + strip_duration)
+        image_strip = sequences.new_image(
+            os.path.basename(filepath), filepath,
+            topmost_channel + 1, scene.frame_current)
+        image_strip.blend_type = 'ALPHA_OVER'
+        image_strip.frame_final_duration = strip_duration
+        image_strip.mute = True # Unmute manually after edit = reload image
+
+class MESH_OT_adh_create_card_image(Operator, CreateImageFileMixin):
     bl_idname = 'mesh.adh_create_card_image'
     bl_label = 'Create Card Image'
     bl_options = {'REGISTER', 'UNDO'}
@@ -331,7 +358,7 @@ class MESH_OT_adh_create_card_image(Operator, CreateImageMixin):
             obj.data.uv_textures.new()
 
         filepath = bpy.path.abspath(self.filepath)
-        image = self.create_image(context, filepath, width, height)
+        image = self.create_image_file(context, filepath, width, height)
         if not image:
             return {'CANCELLED'}
 
@@ -833,31 +860,13 @@ def get_fcurve(action, sequence):
 
     return fcurve
 
-def create_image_strip(context, filepath):
-    scene = context.scene
-    strip_duration = 50
-    topmost_channel = 1
-    scene.sequence_editor_create()
-    sequences = scene.sequence_editor.sequences
-    if scene.sequence_editor:
-        frame_current = scene.frame_current
-        topmost_channel = get_topmost_channel(
-            sequences, frame_current, frame_current + strip_duration)
-    image_strip = sequences.new_image(
-        os.path.basename(filepath), filepath,
-        topmost_channel + 1, scene.frame_current)
-    image_strip.blend_type = 'ALPHA_OVER'
-    image_strip.frame_final_duration = strip_duration
-    image_strip.mute = True # Unmute manually after edit = reload image
-
-class SEQUENCER_OT_adh_add_blank_image_strip(Operator, CreateImageMixin):
+class SEQUENCER_OT_adh_add_blank_image_strip(Operator, CreateImageFileMixin,
+                                             CreateImageStripMixin):
     """Create a new blank image file, with its corresponding image sequence strip."""
     bl_idname = 'sequencer.adh_add_blank_image_strip'
     bl_label = 'Add Blank Image Strip'
     bl_options = {'REGISTER', 'UNDO'}
 
-    filepath = StringProperty(subtype = 'FILE_PATH', default = "//frame.png")
-    external_editor = BoolProperty(default = True)
     invoked = False
 
     @classmethod
@@ -879,16 +888,18 @@ class SEQUENCER_OT_adh_add_blank_image_strip(Operator, CreateImageMixin):
         row.prop(self, 'external_editor', text=' ')
 
     def execute(self, context):
+        self.check_image_path(context)
+
         render_settings = context.scene.render
         width = render_settings.resolution_x
         height = render_settings.resolution_y
 
         filepath = bpy.path.abspath(self.filepath)
-        image = self.create_image(context, filepath, width, height)
+        image = self.create_image_file(context, filepath, width, height)
         if not image:
             return {'CANCELLED'}
 
-        create_image_strip(context, image.filepath)
+        self.create_image_strip(context, image.filepath)
         edit_image_file(context, filepath, self.external_editor)
 
         return {'FINISHED'}
@@ -904,15 +915,14 @@ class SEQUENCER_OT_adh_add_blank_image_strip(Operator, CreateImageMixin):
         self.invoked = True
         return retval
 
-class SEQUENCER_OT_adh_add_annotation_image_strip(Operator):
+class SEQUENCER_OT_adh_add_annotation_image_strip(Operator,
+                                                  CreateImageStripMixin):
     """Render current frame to a new image file, with its corresponding image sequence strip."""
     bl_idname = 'sequencer.adh_add_annotation_image_strip'
     bl_label = 'Add Annotation Image Strip'
     bl_options = {'REGISTER', 'UNDO'}
 
     scene_name = EnumProperty(items = get_scene_enums)
-    filepath = StringProperty(subtype = 'FILE_PATH', default = "//frame.png")
-    external_editor = BoolProperty(default = True)
     opengl = BoolProperty(default = True)
     invoked = False
 
@@ -936,7 +946,7 @@ class SEQUENCER_OT_adh_add_annotation_image_strip(Operator):
         row.prop(self, 'external_editor', text=' ')
 
     def execute(self, context):
-        self.filepath = bpy.path.abspath(self.filepath)
+        self.check_image_path(context)
 
         render_scene = bpy.data.scenes[self.scene_name]
         render_image(context, self.filepath, scene = render_scene,
@@ -946,7 +956,7 @@ class SEQUENCER_OT_adh_add_annotation_image_strip(Operator):
             return {'CANCELLED'}
 
         filepath = bpy.path.abspath(self.filepath)
-        create_image_strip(context, self.filepath)
+        self.create_image_strip(context, self.filepath)
         edit_image_file(context, filepath, self.external_editor)
         
         return {'FINISHED'}
