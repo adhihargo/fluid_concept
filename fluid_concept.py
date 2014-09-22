@@ -810,6 +810,8 @@ class VIEW3D_OT_adh_background_image_from_scene(Operator):
         return {'FINISHED'}
 
     def invoke(self, context, event):
+        self.scene_name = context.scene.name
+
         retval = context.window_manager.invoke_props_dialog(self)
         self.invoked = True
         return retval
@@ -967,6 +969,8 @@ class SEQUENCER_OT_adh_add_annotation_image_strip(Operator,
             props.new_strip_image_filepath = '//frame_%04d.png'
         self.filepath = props.new_strip_image_filepath\
             % (context.scene.frame_current)
+
+        self.scene_name = context.scene.name
 
         retval = context.window_manager.invoke_props_dialog(self)
         self.invoked = True
