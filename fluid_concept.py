@@ -820,7 +820,7 @@ class SCREEN_OT_adh_change_scene(Operator):
     bl_label = 'Change Scene'
     bl_options = {'REGISTER', 'UNDO'}
 
-    reverse = BoolProperty(name="Reverse", default=False)
+    reverse = BoolProperty(name="Reverse", default=False, options={"SKIP_SAVE"})
 
     def execute(self, context):
         scene_count = len(bpy.data.scenes)
